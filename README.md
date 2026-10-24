@@ -9,7 +9,7 @@ Aplicación interactiva gamificada para entrenar la memoria de trabajo y el segu
 ## ✨ Características
 
 - **Protocolo de 4 Fases Cognitivas:** Escuchar ➔ Repetir en voz alta (3 veces) ➔ Ejecutar en el mundo real ➔ Validar con cámara o con un adulto.
-- **Integración opcional con Google Gemini (`gemini-2.5-flash`):**
+- **Integración opcional con Google Gemini (`gemini-3.8-flash`):**
   - Generación de misiones físicas nuevas de 2, 3 o 4 pasos.
   - Validación visual mediante la cámara web con Gemini Vision.
 - **Modo Local / Sin Conexión:** Catálogo de misiones físicas preconfiguradas y validación local o por padres sin requerir API Key.

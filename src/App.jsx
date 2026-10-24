@@ -191,7 +191,7 @@ export default function App() {
     SpyAudio.playRadar();
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -351,7 +351,7 @@ export default function App() {
     }
 
     const base64Data = photoDataUrl.split(',')[1];
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`;
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
 
     const promptText = `Eres el Cuartel General de una Academia Secreta de Espías para niñas. 
 Evalúa con cariño, motivación y entusiasmo si la niña cumplió la misión física.
@@ -443,7 +443,7 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
     setIsAnalyzingAI(true);
     SpyAudio.playRadar();
 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`;
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
 
     const prompt = `Crea una misión física divertida para entrenar la memoria de trabajo y seguimiento de instrucciones en una niña inteligente.
 Dificultad: exactamente ${difficultySteps} pasos secuenciales.
