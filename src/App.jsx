@@ -57,107 +57,67 @@ class SpyAudio {
 
 // Temáticas rápidas para que la IA genere instrucciones variadas
 const AI_THEMES = [
-  { id: 'sorpresa', label: '🎲 Sorpresa Espía', prompt: 'Combina movimientos divertidos (saltos, giros, caminar en puntillas) con buscar objetos cotidianos seguros de la casa.' },
+  { id: 'sorpresa', label: '🎲 Sorpresa Espía', prompt: 'Combina movimientos divertidos y variados con buscar objetos cotidianos seguros de la casa.' },
   { id: 'lego', label: '🧱 LEGO y Bloques', prompt: 'Usa piezas de LEGO, bloques de construcción o torres de colores combinadas con desafíos de movimiento físico.' },
   { id: 'ninja', label: '🥷 Agente Ninja', prompt: 'Incluye poses de equilibrio, saltos ninja, caminar sin hacer ruido, tocar paredes o puertas y traer un objeto secreto.' },
   { id: 'colores', label: '🎨 Cazadora de Colores', prompt: 'Sigue una secuencia buscando o tocando objetos de colores específicos en la habitación y trayendo el último a la cámara.' },
-  { id: 'peluches', label: '🧸 Peluches y Juguetes', prompt: 'Misión de rescate de juguetes o peluches con pasos físicos intermedios divertidos.' },
+  { id: 'peluches', label: '🧸 Peluches y Juguetes', prompt: 'Misión de rescate de juguetes, muñecos o peluches con pasos físicos intermedios divertidos.' },
   { id: 'dibujo', label: '✏️ Papel y Lápiz', prompt: 'Incluye buscar útiles escolares (lápiz, marcador, cuaderno o libro) o dibujar una figura rápida para mostrar a la cámara.' }
 ];
 
-// Misiones preconfiguradas 100% físicas para el mundo real (Modo Local / Fallback de 2 a 8+ pasos)
-const REAL_WORLD_MISSIONS = [
-  {
-    stepsCount: 2,
-    category: 'Cuerpo & Objeto',
-    title: 'Operación Pingüino y Marcador',
-    targetItem: 'un lápiz, bolígrafo o marcador',
-    steps: [
-      { id: 1, text: "Camina como pingüino hasta la puerta de la habitación", icon: "🐧" },
-      { id: 2, text: "Busca un lápiz o marcador y muéstralo aquí", icon: "✏️" }
-    ]
-  },
-  {
-    stepsCount: 3,
-    category: 'Movimiento & Colores',
-    title: 'Operación Camaleón Azul',
-    targetItem: 'una prenda de ropa o tela de color azul',
-    steps: [
-      { id: 1, text: "Toca el marco de la puerta más cercana con ambas manos", icon: "🚪" },
-      { id: 2, text: "Da 3 saltos altos con energía", icon: "🤸‍♀️" },
-      { id: 3, text: "Encuentra una prenda de ropa o tela azul y tráela a la cámara", icon: "👕" }
-    ]
-  },
-  {
-    stepsCount: 4,
-    category: 'Memoria Élite Espía',
-    title: 'Operación Guardián de Peluche',
-    targetItem: 'un peluche o juguete pequeño',
-    steps: [
-      { id: 1, text: "Haz una pose de estatua secreta sin moverte durante 5 segundos", icon: "🗿" },
-      { id: 2, text: "Toca el suelo con una rodilla y aplaude 2 veces", icon: "👏" },
-      { id: 3, text: "Busca un peluche o figura pequeña que tengas en el cuarto", icon: "🧸" },
-      { id: 4, text: "Coloca el juguete frente a la lente para que el radar lo analice", icon: "🔍" }
-    ]
-  },
-  {
-    stepsCount: 5,
-    category: 'Secuencia de 5 Pasos',
-    title: 'Protocolo Cinco Estrellas',
-    targetItem: 'un libro o cuento infantil',
-    steps: [
-      { id: 1, text: "Da 2 giros sobre tus pies como un trompo espacial", icon: "🌀" },
-      { id: 2, text: "Camina en puntillas sin hacer ruido hasta una silla", icon: "🪑" },
-      { id: 3, text: "Toca la silla con los dos codos", icon: "💪" },
-      { id: 4, text: "Busca cualquier libro, cuaderno o cuento que te guste", icon: "📚" },
-      { id: 5, text: "Trae el libro y muéstralo abierto frente a la cámara", icon: "📸" }
-    ]
-  },
-  {
-    stepsCount: 6,
-    category: 'Secuencia de 6 Pasos',
-    title: 'Operación Hexágono Dorado',
-    targetItem: 'dos objetos de colores diferentes en las manos',
-    steps: [
-      { id: 1, text: "Salta 3 veces en un solo pie como flamenco", icon: "🦩" },
-      { id: 2, text: "Toca la pared más cercana con la palma de tu mano derecha", icon: "✋" },
-      { id: 3, text: "Agáchate como ranita y vuelve a subir", icon: "🐸" },
-      { id: 4, text: "Busca un objeto pequeño de color rojo o amarillo", icon: "🔴" },
-      { id: 5, text: "Con la otra mano toma un objeto de cualquier otro color", icon: "🔵" },
-      { id: 6, text: "Muestra ambos objetos al mismo tiempo frente a la cámara", icon: "✨" }
-    ]
-  },
-  {
-    stepsCount: 7,
-    category: 'Secuencia de 7 Pasos',
-    title: 'Misión Siete Mares Secretos',
-    targetItem: 'un cojín, almohada pequeña o peluche',
-    steps: [
-      { id: 1, text: "Pon las manos en la cintura y haz cara de detective", icon: "🕵️‍♀️" },
-      { id: 2, text: "Da 4 pasos gigantes hacia adelante", icon: "👣" },
-      { id: 3, text: "Aplaude 3 veces por encima de tu cabeza", icon: "🙌" },
-      { id: 4, text: "Toca el borde de una mesa con el dedo meñique", icon: "👉" },
-      { id: 5, text: "Da un salto de estrella abriendo brazos y piernas", icon: "⭐" },
-      { id: 6, text: "Toma un cojín pequeño o un peluche suave", icon: "🛋️" },
-      { id: 7, text: "Regresa a la base y muéstralo en la cámara", icon: "📹" }
-    ]
-  },
-  {
-    stepsCount: 8,
-    category: 'Ultra Memoria (8 Pasos)',
-    title: 'Operación Octágono Supremo',
-    targetItem: 'un zapato, pantufla o calcetín limpio',
-    steps: [
-      { id: 1, text: "Camina hacia atrás 3 pasos con mucho cuidado", icon: "⏪" },
-      { id: 2, text: "Tócate los hombros cruzando los brazos como momia", icon: "🙅‍♀️" },
-      { id: 3, text: "Haz 2 sentadillas de superhéroe", icon: "🦸‍♀️" },
-      { id: 4, text: "Ve hasta la puerta y tócala 2 veces como tocando el timbre", icon: "🚪" },
-      { id: 5, text: "Gira una vuelta completa en tu lugar", icon: "🔄" },
-      { id: 6, text: "Toca el suelo con ambas manos", icon: "👐" },
-      { id: 7, text: "Busca un zapato, tenis o calcetín limpio", icon: "👟" },
-      { id: 8, text: "Tráelo a la base y muéstralo frente al radar de la cámara", icon: "🏆" }
-    ]
-  }
+// Semillas creativas para garantizar que la IA SIEMPRE invente misiones completamente distintas
+const CREATIVE_SCENARIOS = [
+  "Operación de sigilo en gravedad cero como astronauta",
+  "Entrenamiento de agilidad felina y rescate de artefacto doméstico",
+  "Código secreto de bailarina ninja y búsqueda del tesoro por colores",
+  "Misión submarina imaginaria esquivando láseres invisibles en el cuarto",
+  "Desafío de equilibrio real y recolección de suministros de expedición",
+  "Rastreo de detective con pistas táctiles en muebles seguros de la habitación",
+  "Operación relámpago de coordinación motora y objetos suaves",
+  "Misión de camuflaje ártico con pasos de animales divertidos",
+  "Protocolo de supervelocidad controlada y construcción o emparejamiento de objetos",
+  "Aventura en la jungla secreta saltando charcos imaginarios y rescatando un objeto",
+  "Sincronización cerebral de espía maestro con toques rítmicos y palmas",
+  "Infiltración silenciosa en cámara lenta y hallazgo de objeto brillante o colorido"
+];
+
+// Banco amplio de acciones físicas y objetos para el generador procedural anti-repetición (respaldo)
+const PROCEDURAL_ACTIONS = [
+  { text: "Camina como pingüino hasta la puerta de la habitación", icon: "🐧" },
+  { text: "Da 3 saltos altos abriendo los brazos como estrella", icon: "⭐" },
+  { text: "Toca el suelo con ambas manos y levántate de un salto", icon: "🐸" },
+  { text: "Gira una vuelta completa sobre tus pies como un trompo", icon: "🌀" },
+  { text: "Camina en puntillas sin hacer ni un ruido durante 5 pasos", icon: "🤫" },
+  { text: "Haz equilibrio en un solo pie mientras cuentas hasta 4", icon: "🦩" },
+  { text: "Toca una silla con ambos codos al mismo tiempo", icon: "🪑" },
+  { text: "Aplaude 3 veces por encima de tu cabeza y 2 veces abajo", icon: "👏" },
+  { text: "Camina hacia atrás 4 pasos como un cangrejo espía", icon: "🦀" },
+  { text: "Haz una pose de estatua de superhéroe durante 4 segundos", icon: "🦸‍♀️" },
+  { text: "Toca el marco de la puerta con la mano derecha y luego con la izquierda", icon: "🚪" },
+  { text: "Camina como un robot mecánico hasta el centro del cuarto", icon: "🤖" },
+  { text: "Cruza los brazos sobre el pecho como momia y da 2 saltitos", icon: "🙅‍♀️" },
+  { text: "Tócate las rodillas, luego los hombros y luego la cabeza", icon: "🙆‍♀️" },
+  { text: "Da 3 pasos gigantes de dinosaurio por la habitación", icon: "🦖" },
+  { text: "Haz como si nadaras en el aire mientras das una vuelta", icon: "🏊‍♀️" },
+  { text: "Toca la pared más cercana con los dos dedos índices", icon: "👉" },
+  { text: "Salta hacia adelante como un canguro 2 veces seguidas", icon: "🦘" },
+  { text: "Camina en cámara lenta como astronauta en la Luna por 4 segundos", icon: "👩‍🚀" },
+  { text: "Haz 2 sentadillas rápidas y saluda como comandante", icon: "🫡" }
+];
+
+const PROCEDURAL_TARGETS = [
+  { item: "un lápiz, color o marcador", stepText: "Busca un lápiz, color o marcador y muéstralo frente a la cámara", icon: "✏️" },
+  { item: "un peluche o muñeco pequeño", stepText: "Rescata un peluche o juguete pequeño y tráelo a la cámara", icon: "🧸" },
+  { item: "un libro o cuaderno", stepText: "Busca un libro, cuento o cuaderno y muéstralo en la cámara", icon: "📚" },
+  { item: "una prenda de ropa o tela de color azul", stepText: "Encuentra una prenda o tela azul y muéstrala frente a la lente", icon: "👕" },
+  { item: "un cojín o almohada pequeña", stepText: "Toma un cojín o almohada pequeña y enséñalo a la cámara", icon: "🛋️" },
+  { item: "un zapato, pantufla o calcetín limpio", stepText: "Busca un zapato o calcetín limpio y muéstralo en la base", icon: "👟" },
+  { item: "dos objetos de colores distintos (uno en cada mano)", stepText: "Trae 2 objetos pequeños de distinto color y muéstralos juntos en cámara", icon: "🎨" },
+  { item: "una cuchara pequeña o vaso de plástico seguro", stepText: "Busca una cuchara pequeña o vaso de plástico y muéstralo a la cámara", icon: "🥄" },
+  { item: "una torre o par de bloques/LEGO unidos", stepText: "Une 2 o 3 bloques/piezas de juguete y muéstralos frente a la cámara", icon: "🧱" },
+  { item: "un objeto redondo (pelota, tapa o cinta)", stepText: "Encuentra cualquier objeto redondo seguro y muéstralo a la cámara", icon: "⚽" },
+  { item: "un objeto de color rojo o rosado", stepText: "Busca algo de color rojo o rosado en el cuarto y tráelo a la cámara", icon: "🌺" },
+  { item: "un peine, cepillo o accesorio para el cabello", stepText: "Busca un peine, cepillo o liga de cabello y muéstralo a la cámara", icon: "🪮" }
 ];
 
 // Lista de modelos candidatos en orden de prioridad con fallback automático
@@ -168,6 +128,38 @@ const CANDIDATE_MODELS = [
   'gemini-2.5-flash',
   'gemini-2.0-flash'
 ];
+
+// Generador procedural único (nunca repite la misión anterior cuando se usa sin API Key)
+function buildUniqueProceduralMission(stepsCount, previousTitles = []) {
+  const shuffledActions = [...PROCEDURAL_ACTIONS].sort(() => Math.random() - 0.5);
+  const availableTargets = PROCEDURAL_TARGETS.filter(
+    t => !previousTitles.some(prev => prev.includes(t.item))
+  );
+  const targetPool = availableTargets.length > 0 ? availableTargets : PROCEDURAL_TARGETS;
+  const chosenTarget = targetPool[Math.floor(Math.random() * targetPool.length)];
+
+  const actionStepsCount = Math.max(1, stepsCount - 1);
+  const selectedSteps = shuffledActions.slice(0, actionStepsCount).map((act, idx) => ({
+    id: idx + 1,
+    text: act.text,
+    icon: act.icon
+  }));
+
+  selectedSteps.push({
+    id: actionStepsCount + 1,
+    text: chosenTarget.stepText,
+    icon: chosenTarget.icon
+  });
+
+  const codeNumber = Math.floor(100 + Math.random() * 900);
+  return {
+    stepsCount: selectedSteps.length,
+    category: 'Misión Dinámica de Campo',
+    title: `Operación Secreta #${codeNumber}: ${chosenTarget.icon}`,
+    targetItem: chosenTarget.item,
+    steps: selectedSteps
+  };
+}
 
 export default function App() {
   // Manejo de Gemini API Key y Modelo
@@ -188,11 +180,12 @@ export default function App() {
   const [completedCount, setCompletedCount] = useState(2);
   const [speechEnabled, setSpeechEnabled] = useState(true);
 
-  // Estado de la Misión Actual y Generador IA
+  // Estado de la Misión Actual, Historial Anti-Repetición y Generador IA
   const [difficultySteps, setDifficultySteps] = useState(3);
   const [selectedTheme, setSelectedTheme] = useState('sorpresa');
   const [customPrompt, setCustomPrompt] = useState('');
-  const [currentMission, setCurrentMission] = useState(REAL_WORLD_MISSIONS[1]);
+  const [missionHistory, setMissionHistory] = useState([]);
+  const [currentMission, setCurrentMission] = useState(() => buildUniqueProceduralMission(3, []));
   const [aiErrorMsg, setAiErrorMsg] = useState(null);
   
   // Flujo del protocolo: 'listen' -> 'repeat' -> 'action' -> 'verify' -> 'success'
@@ -212,6 +205,7 @@ export default function App() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
+  const didInitialAIFetch = useRef(false);
 
   useEffect(() => {
     if (showKeyModal) {
@@ -220,7 +214,7 @@ export default function App() {
     }
   }, [showKeyModal, apiKey]);
 
-  // Función inteligente para llamar a Gemini con auto-detección de modelo si el modelo seleccionado da error
+  // Función inteligente para llamar a Gemini con auto-detección de modelo
   const callGeminiWithFallback = async (key, payload, preferredModel = activeModel) => {
     const cleanKey = key.trim();
     const modelsToTry = [
@@ -253,13 +247,11 @@ export default function App() {
         const errMsg = errorData.error?.message || `Error HTTP ${res.status}`;
         lastError = new Error(errMsg);
 
-        // Si el mensaje de error de Google sugiere explícitamente un modelo (ej: models/gemini-3.x-flash), extraerlo y probarlo enseguida
         const matchSuggested = errMsg.match(/models\/(gemini-[a-zA-Z0-9.-]+)/);
         if (matchSuggested && matchSuggested[1] && !modelsToTry.includes(matchSuggested[1])) {
           modelsToTry.splice(i + 1, 0, matchSuggested[1]);
         }
 
-        // Si el error es de API Key inválida (400 API_KEY_INVALID o 403), no seguir probando otros modelos
         if (errMsg.toLowerCase().includes('api key not valid') || res.status === 403) {
           break;
         }
@@ -268,7 +260,7 @@ export default function App() {
       }
     }
 
-    // Último intento: consultar la lista oficial de modelos disponibles para esta API Key
+    // Consultar lista oficial de modelos disponibles para esta API Key si todos los candidatos fallan
     try {
       const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`);
       if (listRes.ok) {
@@ -343,7 +335,7 @@ export default function App() {
     }
   };
 
-  // Guardar la Key
+  // Guardar la Key y generar primera misión con IA inmediatamente
   const handleSaveKey = () => {
     const cleanKey = inputKey.trim();
     setApiKey(cleanKey);
@@ -355,6 +347,9 @@ export default function App() {
     }
     setShowKeyModal(false);
     SpyAudio.playSuccess();
+    if (cleanKey) {
+      generateNewAIMission(difficultySteps, selectedTheme, cleanKey);
+    }
   };
 
   // Eliminar la Key
@@ -454,6 +449,11 @@ export default function App() {
   const parseCleanJson = (rawText) => {
     if (!rawText) throw new Error("Respuesta vacía de la IA");
     const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+    }
     return JSON.parse(cleaned);
   };
 
@@ -558,12 +558,22 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
     speakText(cheerMessage || "¡Misión secreta cumplida con honores! Tu memoria operativa está en nivel supremo.");
   };
 
-  // Generador de Misiones e Instrucciones con Gemini IA
-  const generateNewAIMission = async (stepsToGenerate = difficultySteps, themeId = selectedTheme) => {
+  // Generador de Misiones e Instrucciones con Gemini IA (con memoria anti-repetición)
+  const generateNewAIMission = async (
+    stepsToGenerate = difficultySteps,
+    themeId = selectedTheme,
+    overrideKey = apiKey
+  ) => {
     const targetSteps = typeof stepsToGenerate === 'number' ? stepsToGenerate : difficultySteps;
+    const activeKeyToUse = (typeof overrideKey === 'string' ? overrideKey : apiKey).trim();
 
-    if (!apiKey.trim()) {
-      setShowKeyModal(true);
+    // Si no tiene API Key configurada, generar una misión procedural nueva (nunca repetida) y avisar
+    if (!activeKeyToUse) {
+      const procMission = buildUniqueProceduralMission(targetSteps, missionHistory);
+      setMissionHistory(prev => [...prev.slice(-15), `${procMission.title} (${procMission.targetItem})`]);
+      setCurrentMission(procMission);
+      resetMissionFlow(procMission.steps.length);
+      SpyAudio.playSuccess();
       return;
     }
 
@@ -572,6 +582,14 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
     SpyAudio.playRadar();
 
     const themeObj = AI_THEMES.find(t => t.id === themeId) || AI_THEMES[0];
+    const randomScenario = CREATIVE_SCENARIOS[Math.floor(Math.random() * CREATIVE_SCENARIOS.length)];
+    const randomSeedId = Math.floor(10000 + Math.random() * 90000);
+
+    const recentHistoryList = [
+      `${currentMission.title} -> objeto: ${currentMission.targetItem} -> pasos: ${currentMission.steps.map(s => s.text).join('; ')}`,
+      ...missionHistory.slice(-10)
+    ].join('\n- ');
+
     const themeInstruction = customPrompt.trim()
       ? `Instrucción especial solicitada por la familia: "${customPrompt.trim()}".`
       : `Temática elegida: ${themeObj.label} — ${themeObj.prompt}`;
@@ -581,38 +599,43 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
       return `    { "id": ${idx + 1}, "text": "${
         isLast
           ? 'Último paso: traer el objeto o mostrar el resultado frente a la cámara'
-          : `Acción física corta, clara y divertida número ${idx + 1}`
+          : `Acción física corta, original y divertida número ${idx + 1}`
       }", "icon": "✨" }`;
     }).join(',\n');
 
     const prompt = `Eres un diseñador experto en neuroeducación infantil y juegos de espías para entrenar la memoria operativa (memoria de trabajo) y el seguimiento de instrucciones secuenciales.
 
-Crea una misión física nueva, creativa y divertida para realizar dentro de casa.
+ Semilla creativa única: #${randomSeedId} — Inspiración de estilo: "${randomScenario}".
+Crea una misión física TOTALMENTE NUEVA, original y diferente a las anteriores para realizar dentro de casa.
 CANTIDAD OBLIGATORIA DE PASOS: EXACTAMENTE ${targetSteps} pasos secuenciales (numerados del 1 al ${targetSteps}).
 ${themeInstruction}
 
+HISTORIAL DE MISIONES YA JUGADAS (PROHIBIDO REPETIR ESTOS TÍTULOS, OBJETOS O MISMAS ACCIONES):
+- ${recentHistoryList}
+
 REGLAS OBLIGATORIAS:
-1. Todos los pasos deben ser acciones físicas seguras y divertidas en el MUNDO REAL (ej: caminar como robot, dar saltos, tocar una puerta, girar, buscar un objeto de cierto color, apilar bloques, etc.).
-2. Cada instrucción debe ser clara, breve (1 sola oración fácil de memorizar para una niña) y tener un emoji distinto.
-3. El paso final (Paso ${targetSteps}) SIEMPRE debe pedir traer el objeto o mostrar la prueba frente a la cámara de la base.
-4. La lista "steps" debe tener EXACTAMENTE ${targetSteps} elementos.
+1. PROHIBIDO repetir el objeto final ("${currentMission.targetItem}") ni los mismos pasos de la misión anterior. Inventa movimientos físicos distintos y pide un objeto casero diferente.
+2. Todos los pasos deben ser acciones físicas seguras y divertidas en el MUNDO REAL (ej: caminar de formas graciosas, giros, tocar muebles distintos, equilibrios, saltos, palmadas rítmicas, buscar objetos de colores/formas nuevas, etc.).
+3. Cada instrucción debe ser clara, breve (1 sola oración fácil de memorizar para una niña) y tener un emoji distinto.
+4. El paso final (Paso ${targetSteps}) SIEMPRE debe pedir traer el nuevo objeto o mostrar la prueba frente a la cámara de la base.
+5. La lista "steps" debe tener EXACTAMENTE ${targetSteps} elementos.
 
 Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
 {
-  "title": "Nombre divertido de operación espía",
+  "title": "Nombre creativo y nuevo de operación espía",
   "category": "IA • ${themeObj.label.replace(/^[^\s]+\s/, '')}",
-  "targetItem": "descripción breve del objeto o resultado a mostrar ante la cámara al final",
+  "targetItem": "descripción breve del nuevo objeto o resultado a mostrar ante la cámara al final",
   "steps": [
 ${stepsTemplateExample}
   ]
 }`;
 
     try {
-      const { data, usedModel } = await callGeminiWithFallback(apiKey, {
+      const { data, usedModel } = await callGeminiWithFallback(activeKeyToUse, {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           responseMimeType: "application/json",
-          temperature: 0.9
+          temperature: 1.0
         }
       });
 
@@ -632,97 +655,43 @@ ${stepsTemplateExample}
           stepsCount: normalizedSteps.length,
           steps: normalizedSteps
         };
+        setMissionHistory(prev => [
+          ...prev.slice(-15),
+          `${newMission.title} -> objeto: ${newMission.targetItem} -> pasos: ${normalizedSteps.map(s => s.text).join('; ')}`
+        ]);
         setCurrentMission(newMission);
         resetMissionFlow(normalizedSteps.length);
         SpyAudio.playSuccess();
-        speakText(`¡Nueva misión de ${normalizedSteps.length} pasos generada por inteligencia artificial! ${newMission.title}.`);
+        speakText(`¡Nueva misión secreta de ${normalizedSteps.length} pasos! ${newMission.title}.`);
       } else {
         throw new Error("El formato de pasos devuelto por la IA no fue válido.");
       }
     } catch (e) {
       console.warn("Fallo al generar misión con IA:", e);
-      setAiErrorMsg(`No se pudo generar con IA (${e.message}). Se cargó una misión local de ${targetSteps} pasos.`);
-      pickRandomPreset(targetSteps);
+      setAiErrorMsg(`Aviso IA (${e.message}). Se generó una misión dinámica nueva de ${targetSteps} pasos.`);
+      const procMission = buildUniqueProceduralMission(targetSteps, missionHistory);
+      setMissionHistory(prev => [...prev.slice(-15), `${procMission.title} (${procMission.targetItem})`]);
+      setCurrentMission(procMission);
+      resetMissionFlow(procMission.steps.length);
     } finally {
       setIsAnalyzingAI(false);
     }
   };
 
-  // Añadir un paso adicional con IA o manualmente a la misión actual
+  // Si el usuario ya tiene su API Key guardada al abrir la app, generar la primera misión con IA automáticamente
+  useEffect(() => {
+    if (!didInitialAIFetch.current && apiKey.trim()) {
+      didInitialAIFetch.current = true;
+      generateNewAIMission(difficultySteps, selectedTheme, apiKey);
+    }
+  }, []);
+
+  // Añadir un paso adicional con IA o dinámicamente a la misión actual
   const addExtraStepToCurrentMission = async () => {
     const nextStepNum = currentMission.steps.length + 1;
     if (nextStepNum > 12) return;
-
-    if (apiKey.trim()) {
-      await generateNewAIMission(nextStepNum, selectedTheme);
-      setDifficultySteps(nextStepNum);
-      return;
-    }
-
-    // Modo sin API Key: insertar un paso físico extra antes del paso final de cámara
-    const extraActions = [
-      { text: "Da 3 saltos de rana con mucha energía", icon: "🐸" },
-      { text: "Camina en puntillas alrededor de una silla", icon: "🪑" },
-      { text: "Aplaude 4 veces con las manos arriba", icon: "👏" },
-      { text: "Haz equilibrio en un solo pie durante 4 segundos", icon: "🦩" },
-      { text: "Toca el suelo con ambas manos y salta hacia arriba", icon: "🚀" },
-      { text: "Da una vuelta completa como bailarina ninja", icon: "🌪️" }
-    ];
-    const randomAction = extraActions[Math.floor(Math.random() * extraActions.length)];
-    const existingSteps = [...currentMission.steps];
-    const lastStep = existingSteps.pop();
-    const updatedSteps = [
-      ...existingSteps,
-      { id: existingSteps.length + 1, ...randomAction },
-      { ...lastStep, id: existingSteps.length + 2 }
-    ].map((s, idx) => ({ ...s, id: idx + 1 }));
-
-    const updatedMission = {
-      ...currentMission,
-      stepsCount: updatedSteps.length,
-      steps: updatedSteps
-    };
-    setDifficultySteps(updatedSteps.length);
-    setCurrentMission(updatedMission);
-    resetMissionFlow(updatedSteps.length);
-    SpyAudio.playRadar();
-  };
-
-  const pickRandomPreset = (stepsNum) => {
-    const matching = REAL_WORLD_MISSIONS.filter(m => m.stepsCount === stepsNum);
-    if (matching.length > 0) {
-      const selected = matching[Math.floor(Math.random() * matching.length)];
-      setCurrentMission(selected);
-      resetMissionFlow(selected.steps.length);
-      return;
-    }
-
-    // Si piden más pasos que el preset más largo, combinar pasos físicos automáticamente
-    const base = REAL_WORLD_MISSIONS[REAL_WORLD_MISSIONS.length - 1];
-    const extraPool = [
-      { text: "Da 3 saltos abriendo y cerrando los brazos", icon: "🤸‍♀️" },
-      { text: "Toca dos paredes distintas de la habitación", icon: "🧱" },
-      { text: "Camina como robot durante 5 pasos", icon: "🤖" },
-      { text: "Haz una reverencia elegante de espía", icon: "🎩" }
-    ];
-    const middleSteps = [...base.steps.slice(0, -1)];
-    while (middleSteps.length < stepsNum - 1) {
-      const pick = extraPool[middleSteps.length % extraPool.length];
-      middleSteps.push({ id: middleSteps.length + 1, ...pick });
-    }
-    const finalSteps = [
-      ...middleSteps.slice(0, stepsNum - 1),
-      base.steps[base.steps.length - 1]
-    ].map((s, i) => ({ ...s, id: i + 1 }));
-
-    const builtMission = {
-      ...base,
-      title: `${base.title} (${stepsNum} Pasos)`,
-      stepsCount: stepsNum,
-      steps: finalSteps
-    };
-    setCurrentMission(builtMission);
-    resetMissionFlow(stepsNum);
+    setDifficultySteps(nextStepNum);
+    await generateNewAIMission(nextStepNum, selectedTheme);
   };
 
   const resetMissionFlow = (stepsCount = difficultySteps) => {
@@ -738,11 +707,7 @@ ${stepsTemplateExample}
   const selectStepDifficulty = (num) => {
     setDifficultySteps(num);
     setAiErrorMsg(null);
-    if (apiKey.trim()) {
-      generateNewAIMission(num, selectedTheme);
-    } else {
-      pickRandomPreset(num);
-    }
+    generateNewAIMission(num, selectedTheme);
   };
 
   return (
@@ -825,7 +790,7 @@ ${stepsTemplateExample}
                 <span>Cantidad de Pasos en Memoria Operativa</span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Elige de 2 a 8+ pasos. {apiKey.trim() ? 'La IA creará una misión nueva al elegir.' : 'Activa tu API Key para que la IA invente misiones infinitas.'}
+                Elige de 2 a 8+ pasos. Cada prueba se inventa desde cero sin repetir las anteriores.
               </p>
             </div>
 
@@ -870,9 +835,7 @@ ${stepsTemplateExample}
                   key={theme.id}
                   onClick={() => {
                     setSelectedTheme(theme.id);
-                    if (apiKey.trim()) {
-                      generateNewAIMission(difficultySteps, theme.id);
-                    }
+                    generateNewAIMission(difficultySteps, theme.id);
                   }}
                   disabled={isAnalyzingAI}
                   className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
@@ -906,8 +869,8 @@ ${stepsTemplateExample}
                 <Sparkles className={`w-4 h-4 ${isAnalyzingAI ? 'animate-spin' : ''}`} />
                 <span>
                   {isAnalyzingAI
-                    ? `Creando ${difficultySteps} instrucciones...`
-                    : `Generar ${difficultySteps} Instrucciones con IA`}
+                    ? `Inventando ${difficultySteps} instrucciones...`
+                    : `Inventar Nueva Misión IA (${difficultySteps} Pasos)`}
                 </span>
               </button>
             </div>
@@ -950,6 +913,19 @@ ${stepsTemplateExample}
         {/* ================= TARJETA PRINCIPAL DE MISIÓN ================= */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-8 shadow-2xl relative overflow-hidden">
           
+          {/* Overlay de carga cuando la IA está inventando la siguiente misión */}
+          {isAnalyzingAI && phase !== 'verify' && (
+            <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3 p-6 text-center">
+              <Sparkles className="w-10 h-10 text-purple-400 animate-spin" />
+              <div className="text-base font-black text-white">
+                El Cuartel IA está inventando una misión nueva de {difficultySteps} pasos...
+              </div>
+              <div className="text-xs text-slate-400">
+                Verificando que no se repita ninguna prueba anterior
+              </div>
+            </div>
+          )}
+
           {/* Encabezado de la Misión */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
             <div>
@@ -960,7 +936,7 @@ ${stepsTemplateExample}
                 {currentMission.isAI && (
                   <span className="text-[11px] bg-purple-950/80 border border-purple-500/50 text-purple-300 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
                     <Sparkles className="w-3 h-3" />
-                    Creada por IA
+                    Creada por IA ({currentMission.modelUsed || activeModel})
                   </span>
                 )}
                 <span className="text-xs text-amber-400 font-bold">
@@ -973,6 +949,16 @@ ${stepsTemplateExample}
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                onClick={() => generateNewAIMission(difficultySteps, selectedTheme)}
+                disabled={isAnalyzingAI}
+                title="Inventar otra misión distinta ahora"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-purple-300 text-xs font-bold transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzingAI ? 'animate-spin' : ''}`} />
+                <span>Otra Prueba</span>
+              </button>
+
               <button
                 onClick={() => narrateMission()}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-950 border border-cyan-700/60 hover:bg-cyan-900 text-cyan-300 text-xs font-black shadow-md transition-all"
@@ -1250,25 +1236,18 @@ ${stepsTemplateExample}
                 <button
                   onClick={() => generateNewAIMission(difficultySteps, selectedTheme)}
                   disabled={isAnalyzingAI}
-                  className="px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-sm shadow-xl shadow-purple-900/30 flex items-center gap-2"
+                  className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/20 flex items-center gap-2 disabled:opacity-50"
                 >
                   <Sparkles className="w-4 h-4" />
-                  <span>Nueva Misión IA ({difficultySteps} Pasos)</span>
+                  <span>Siguiente Misión Nueva con IA ({difficultySteps} Pasos) ➔</span>
                 </button>
 
                 <button
                   onClick={() => selectStepDifficulty(Math.min(10, difficultySteps + 1))}
                   disabled={isAnalyzingAI}
-                  className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/20"
+                  className="px-6 py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-sm shadow-xl shadow-purple-900/30 flex items-center gap-2 disabled:opacity-50"
                 >
-                  Subir Nivel a {Math.min(10, difficultySteps + 1)} Pasos 🚀
-                </button>
-
-                <button
-                  onClick={() => pickRandomPreset(difficultySteps)}
-                  className="px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs"
-                >
-                  Misión del Catálogo Local
+                  <span>Subir Nivel a {Math.min(10, difficultySteps + 1)} Pasos 🚀</span>
                 </button>
               </div>
             </div>
