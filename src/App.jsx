@@ -264,13 +264,17 @@ export default function App() {
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [checkedSteps, setCheckedSteps] = useState([]);
 
-  // Reconocimiento de Voz (SpeechRecognition) para la Fase 2 (Repetir instrucciones)
+  // Reconocimiento de Voz con Grabación de Audio Real + Gemini Multimodal (Fase 2: Repetir)
   const [isListeningVoice, setIsListeningVoice] = useState(false);
+  const [isEvaluatingVoice, setIsEvaluatingVoice] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
   const [matchedStepIdsInRep, setMatchedStepIdsInRep] = useState([]);
   const [voiceStatusMsg, setVoiceStatusMsg] = useState("");
   const [peekInstructions, setPeekInstructions] = useState(false);
   const recognitionRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const audioStreamRef = useRef(null);
   const repeatTapsRef = useRef(0);
   const cooldownRepRef = useRef(false);
 
@@ -463,8 +467,8 @@ export default function App() {
     speakText(speech);
   };
 
-  // ================== RECONOCIMIENTO DE VOZ PARA REPETICIÓN (FASE 2) ==================
-  const stopVoiceRecognition = () => {
+  // ================== RECONOCIMIENTO DE VOZ REAL CON GEMINI AUDIO (FASE 2) ==================
+  const cleanupAudioRecording = () => {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.onend = null;
@@ -472,146 +476,270 @@ export default function App() {
       } catch (_) {}
       recognitionRef.current = null;
     }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (_) {}
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(t => t.stop());
+      audioStreamRef.current = null;
+    }
     setIsListeningVoice(false);
   };
 
-  const registerCompletedRepetition = (source = 'voice') => {
+  const registerCompletedRepetition = (source = 'voice', customMsg = '') => {
     if (cooldownRepRef.current) return;
     cooldownRepRef.current = true;
     setTimeout(() => {
       cooldownRepRef.current = false;
-    }, 1200);
+    }, 800);
 
     const next = repeatTapsRef.current + 1;
     repeatTapsRef.current = next;
     setRepeatTaps(next);
-    setMatchedStepIdsInRep([]);
-    setLiveTranscript("");
     SpyAudio.playBeep(440 + next * 120, 'sine', 0.15);
 
     if (next >= 3) {
-      stopVoiceRecognition();
-      setVoiceStatusMsg("¡3 repeticiones completadas! ¡A cumplir la misión!");
+      cleanupAudioRecording();
+      setVoiceStatusMsg(customMsg || "¡3 repeticiones completadas! ¡A cumplir la misión!");
       setTimeout(() => {
         setPhase('action');
         setIsTimerActive(true);
         SpyAudio.playSuccess();
         speakText("¡Cerebro activado! Tienes el tiempo en marcha para completar la misión en la casa.");
-      }, 450);
+      }, 600);
     } else if (source === 'voice') {
-      setVoiceStatusMsg(`¡Excelente! Repetición ${next} de 3 detectada por voz. ¡Repítela una vez más!`);
+      const msg = customMsg || `¡Excelente memoria! Repetición ${next} de 3 validada. ¡Dila una vez más!`;
+      setVoiceStatusMsg(msg);
+      speakText(`¡Muy bien! Llevas ${next} de 3. Repítela una vez más.`);
     }
   };
 
-  const startVoiceRecognition = () => {
-    if (typeof window === 'undefined') return;
-    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognitionClass) {
-      setVoiceStatusMsg("Tu navegador no soporta reconocimiento de voz directo. Usa el botón manual de abajo.");
-      return;
-    }
+  // Convertir Blob de audio a Base64
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result || '';
+        const base64 = String(dataUrl).split(',')[1] || '';
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
 
-    // Cancelar síntesis de voz si estaba hablando para que el micrófono escuche a la niña
+  // Evaluar estrictamente coincidencias locales (solo palabras de >= 4 letras con raíz exacta, sin falsos positivos)
+  const evaluateSpokenTextLocally = (spokenText) => {
+    const normSpoken = normalizeText(spokenText);
+    const spokenWords = normSpoken.split(' ').filter(w => w.length >= 3 || /^\d+$/.test(w));
+    const matchedIds = [];
+
+    currentMission.steps.forEach((step) => {
+      const keywords = extractStepKeywords(step.text);
+      if (keywords.length === 0) return;
+      const matchedCount = keywords.filter(kw => {
+        if (/^\d+$/.test(kw)) return spokenWords.includes(kw);
+        const stem = kw.slice(0, Math.min(kw.length, 5));
+        return spokenWords.some(sw => sw.length >= 4 && sw.startsWith(stem));
+      }).length;
+
+      if (matchedCount >= 1) {
+        matchedIds.push(step.id);
+      }
+    });
+
+    return matchedIds;
+  };
+
+  // Iniciar grabación de voz del micrófono
+  const startVoiceRecognition = async () => {
+    if (typeof window === 'undefined') return;
+
+    // Cancelar síntesis de voz si estaba hablando
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
 
-    stopVoiceRecognition();
+    cleanupAudioRecording();
+    setMatchedStepIdsInRep([]);
+    setLiveTranscript("");
+    audioChunksRef.current = [];
 
-    const recognition = new SpeechRecognitionClass();
-    recognition.lang = 'es-ES';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    let accumulatedNormalized = "";
-
-    recognition.onstart = () => {
-      setIsListeningVoice(true);
-      setVoiceStatusMsg("🎙️ Escuchando... Di los pasos de la misión en voz alta.");
-      SpyAudio.playRadar();
-    };
-
-    recognition.onresult = (event) => {
-      let interim = "";
-      let finalChunk = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcriptPiece = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalChunk += " " + transcriptPiece;
-        } else {
-          interim += " " + transcriptPiece;
-        }
-      }
-
-      if (finalChunk) {
-        accumulatedNormalized += " " + normalizeText(finalChunk);
-      }
-
-      const fullSpoken = (accumulatedNormalized + " " + normalizeText(interim)).trim();
-      setLiveTranscript((finalChunk + " " + interim).trim());
-
-      if (!fullSpoken) return;
-      const spokenWords = fullSpoken.split(' ').filter(Boolean);
-
-      // Evaluar cuántos pasos de la misión actual ya mencionó
-      const matchedIds = [];
-      currentMission.steps.forEach((step) => {
-        const keywords = extractStepKeywords(step.text);
-        if (keywords.length === 0) {
-          matchedIds.push(step.id);
-          return;
-        }
-        // Coincidencia flexible (prefijo de 4 letras para tolerar conjugaciones infantiles)
-        const hasMatch = keywords.some(kw => {
-          const root = kw.slice(0, Math.min(kw.length, 4));
-          return spokenWords.some(sw => sw.includes(root) || root.includes(sw));
-        });
-        if (hasMatch) {
-          matchedIds.push(step.id);
-        }
-      });
-
-      setMatchedStepIdsInRep(matchedIds);
-
-      // Umbral amigable para niños: si mencionó palabras clave de al menos la mitad de los pasos
-      // (o si dijo al menos 5 palabras por paso en total describiendo la secuencia)
-      const requiredStepsMatched = Math.max(1, Math.ceil(currentMission.steps.length * 0.6));
-      const minSpokenWords = Math.max(4, currentMission.steps.length * 3);
-
-      if (
-        (matchedIds.length >= requiredStepsMatched && spokenWords.length >= minSpokenWords - 1) ||
-        spokenWords.length >= currentMission.steps.length * 6
-      ) {
-        accumulatedNormalized = "";
-        registerCompletedRepetition('voice');
-      }
-    };
-
-    recognition.onerror = (event) => {
-      if (event.error === 'not-allowed') {
-        setVoiceStatusMsg("Permiso de micrófono denegado. Puedes darle permiso en el navegador o usar el botón manual.");
-        setIsListeningVoice(false);
-      }
-    };
-
-    recognition.onend = () => {
-      // Si seguimos en la fase 'repeat' y aún faltan repeticiones, mantener el micrófono activo
-      if (recognitionRef.current && repeatTapsRef.current < 3) {
-        try {
-          recognition.start();
-        } catch (_) {
-          setIsListeningVoice(false);
-        }
-      } else {
-        setIsListeningVoice(false);
-      }
-    };
-
-    recognitionRef.current = recognition;
     try {
-      recognition.start();
-    } catch (e) {
-      console.warn("No se pudo iniciar SpeechRecognition:", e);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : 'audio/mp4';
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.start(250);
+      setIsListeningVoice(true);
+      setVoiceStatusMsg("🎙️ Grabando tu voz... Di los pasos que recuerdes y luego pulsa '¡Ya lo dije! Evaluar'.");
+      SpyAudio.playRadar();
+
+      // Opcionalmente mostrar subtítulos en vivo si el navegador lo soporta (sin disparar nada al azar)
+      const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognitionClass) {
+        try {
+          const recognition = new SpeechRecognitionClass();
+          recognition.lang = 'es-ES';
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          let finalTranscriptSoFar = "";
+          recognition.onresult = (event) => {
+            let interim = "";
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+              if (event.results[i].isFinal) {
+                finalTranscriptSoFar += " " + event.results[i][0].transcript;
+              } else {
+                interim += " " + event.results[i][0].transcript;
+              }
+            }
+            setLiveTranscript((finalTranscriptSoFar + " " + interim).trim());
+          };
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.warn("Error al acceder al micrófono:", err);
+      setVoiceStatusMsg("No se pudo acceder al micrófono. Revisa los permisos del navegador o usa el botón manual.");
+      setIsListeningVoice(false);
+    }
+  };
+
+  // Detener grabación y analizar el audio con Gemini Multimodal (o evaluador local si no hay API Key)
+  const finishAndEvaluateVoice = async () => {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+      cleanupAudioRecording();
+      return;
+    }
+
+    setIsEvaluatingVoice(true);
+    setVoiceStatusMsg("🔍 El Cuartel IA está escuchando tu grabación...");
+    SpyAudio.playRadar();
+
+    const recorder = mediaRecorderRef.current;
+    const mimeType = (recorder.mimeType || 'audio/webm').split(';')[0];
+
+    const audioBlob = await new Promise((resolve) => {
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        resolve(blob);
+      };
+      try {
+        recorder.stop();
+      } catch (_) {
+        resolve(new Blob(audioChunksRef.current, { type: mimeType }));
+      }
+    });
+
+    cleanupAudioRecording();
+
+    // Si hay API Key activa, enviar el audio real a Gemini para que transcriba y valide con precisión
+    if (apiKey.trim() && audioBlob.size > 500) {
+      try {
+        const base64Audio = await blobToBase64(audioBlob);
+        const stepsDescription = currentMission.steps
+          .map((s, idx) => `Paso ${idx + 1} (id=${s.id}): "${s.text}"`)
+          .join('\n');
+
+        const prompt = `Escucha con atención esta grabación de voz de una niña que está intentando repetir de memoria los pasos de su misión secreta.
+Los pasos de la misión son:
+${stepsDescription}
+
+Evalúa qué dijo realmente en el audio:
+1. Transcribe exactamente lo que dijo la niña en español. Si no se escucha a nadie hablando o solo hay ruido, deja "transcripcion" vacío y "aprobado": false.
+2. Identifica cuáles de los pasos (por su número de id: ${currentMission.steps.map(s => s.id).join(', ')}) sí mencionó o describió con sus propias palabras (sé flexible con sinónimos infantiles, por ejemplo "dar brincos" = "saltos", "ir a la puerta" = "tocar la puerta").
+3. Marca "aprobado": true si mencionó la idea principal de al menos ${Math.max(1, Math.ceil(currentMission.steps.length * 0.65))} de los ${currentMission.steps.length} pasos. Si dijo cosas al azar que no tienen relación con la misión o le faltaron muchos pasos, marca "aprobado": false.
+
+Devuelve ÚNICAMENTE un objeto JSON válido con este formato:
+{
+  "transcripcion": "lo que dijo la niña",
+  "pasos_recordados_ids": [1, 2],
+  "aprobado": true,
+  "comentario_espia": "Mensaje corto y motivador diciendo qué pasos recordó o cuál le faltó mencionar"
+}`;
+
+        const { data } = await callGeminiWithFallback(apiKey, {
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Audio
+                  }
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.2
+          }
+        });
+
+        const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const parsed = parseCleanJson(rawJson);
+
+        if (parsed.transcripcion) {
+          setLiveTranscript(parsed.transcripcion);
+        }
+        const rememberedIds = Array.isArray(parsed.pasos_recordados_ids) ? parsed.pasos_recordados_ids : [];
+        setMatchedStepIdsInRep(rememberedIds);
+
+        if (parsed.aprobado) {
+          registerCompletedRepetition('voice', parsed.comentario_espia);
+        } else {
+          SpyAudio.playAlarm();
+          const feedbackText = parsed.comentario_espia || `Recordaste ${rememberedIds.length} de ${currentMission.steps.length} pasos. ¡Intenta decir todos los pasos otra vez!`;
+          setVoiceStatusMsg(`⚠️ ${feedbackText}`);
+          speakText(feedbackText);
+        }
+      } catch (err) {
+        console.warn("Error analizando audio con Gemini, usando texto local:", err);
+        const matchedLocal = evaluateSpokenTextLocally(liveTranscript);
+        setMatchedStepIdsInRep(matchedLocal);
+        const required = Math.max(1, Math.ceil(currentMission.steps.length * 0.65));
+        if (matchedLocal.length >= required) {
+          registerCompletedRepetition('voice');
+        } else {
+          SpyAudio.playAlarm();
+          setVoiceStatusMsg(`Detectamos ${matchedLocal.length} de ${currentMission.steps.length} pasos. ¡Intenta mencionar todos los pasos o usa el botón manual!`);
+        }
+      } finally {
+        setIsEvaluatingVoice(false);
+      }
+      return;
+    }
+
+    // Modo sin API Key: evaluar texto transcrito localmente sin falsos positivos
+    const matchedLocal = evaluateSpokenTextLocally(liveTranscript);
+    setMatchedStepIdsInRep(matchedLocal);
+    setIsEvaluatingVoice(false);
+    const required = Math.max(1, Math.ceil(currentMission.steps.length * 0.65));
+    if (matchedLocal.length >= required) {
+      registerCompletedRepetition('voice');
+    } else {
+      SpyAudio.playAlarm();
+      setVoiceStatusMsg(`Mencionaste ${matchedLocal.length} de ${currentMission.steps.length} pasos. ¡Di todos los pasos o configura tu API Key para análisis de voz con IA!`);
     }
   };
 
@@ -619,12 +747,12 @@ export default function App() {
   useEffect(() => {
     setPeekInstructions(false);
     if (phase !== 'repeat') {
-      stopVoiceRecognition();
+      cleanupAudioRecording();
       setLiveTranscript("");
       setMatchedStepIdsInRep([]);
       setVoiceStatusMsg("");
     }
-    return () => stopVoiceRecognition();
+    return () => cleanupAudioRecording();
   }, [phase]);
 
   // Temporizador de cuenta regresiva
@@ -1594,45 +1722,53 @@ ${stepsTemplateExample}
                     </p>
                   </div>
 
-                  {/* Controles de Micrófono en Vivo */}
+                  {/* Controles de Grabación y Evaluación de Voz con IA */}
                   <div className="flex flex-col items-center gap-3">
-                    <button
-                      onClick={() => {
-                        if (isListeningVoice) {
-                          stopVoiceRecognition();
-                        } else {
-                          startVoiceRecognition();
-                        }
-                      }}
-                      className={`px-6 py-3.5 rounded-2xl font-black text-sm shadow-xl flex items-center gap-3 transition-all ${
-                        isListeningVoice
-                          ? 'bg-red-500 hover:bg-red-400 text-white shadow-red-500/30 animate-pulse'
-                          : 'bg-gradient-to-r from-cyan-400 to-teal-400 hover:from-cyan-300 hover:to-teal-300 text-slate-950 shadow-cyan-500/20'
-                      }`}
-                    >
-                      {isListeningVoice ? (
-                        <>
-                          <Mic className="w-5 h-5 animate-bounce" />
-                          <span>Escuchando tu voz en vivo... (Clic para pausar)</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mic className="w-5 h-5" />
-                          <span>Activar Micrófono para Repetir Instrucciones</span>
-                        </>
-                      )}
-                    </button>
+                    {!isListeningVoice ? (
+                      <button
+                        onClick={startVoiceRecognition}
+                        disabled={isEvaluatingVoice}
+                        className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:from-cyan-300 hover:to-teal-300 text-slate-950 font-black text-sm shadow-xl shadow-cyan-500/20 flex items-center gap-3 transition-all disabled:opacity-50"
+                      >
+                        <Mic className="w-5 h-5" />
+                        <span>
+                          {isEvaluatingVoice
+                            ? 'Analizando tu voz con Gemini IA...'
+                            : '🎙️ Empezar a Hablar (Grabar Repetición)'}
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="flex flex-wrap items-center justify-center gap-3">
+                        <button
+                          onClick={finishAndEvaluateVoice}
+                          className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/30 flex items-center gap-2.5 animate-bounce"
+                        >
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span>✅ ¡Ya lo dije! Evaluar mi Voz con IA</span>
+                        </button>
 
-                    {/* Transcripción en vivo de lo que dice la niña */}
-                    {(isListeningVoice || liveTranscript || voiceStatusMsg) && (
-                      <div className="w-full max-w-xl p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 text-left space-y-2">
+                        <button
+                          onClick={cleanupAudioRecording}
+                          className="px-4 py-3 rounded-2xl bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 font-bold text-xs flex items-center gap-1.5"
+                        >
+                          <MicOff className="w-4 h-4" />
+                          <span>Cancelar</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Estado y Transcripción de lo que escuchó la IA */}
+                    {(isListeningVoice || isEvaluatingVoice || liveTranscript || voiceStatusMsg) && (
+                      <div className="w-full max-w-xl p-4 rounded-2xl bg-slate-950/90 border border-slate-800 text-left space-y-2">
                         <div className="flex items-center justify-between text-[11px] font-mono text-cyan-400">
                           <span>{voiceStatusMsg || "🎙️ Radar de voz activo"}</span>
-                          <span>Pasos detectados: {matchedStepIdsInRep.length}/{currentMission.steps.length}</span>
+                          <span>Pasos recordados: {matchedStepIdsInRep.length}/{currentMission.steps.length}</span>
                         </div>
-                        <div className="text-xs sm:text-sm text-slate-200 italic min-h-[1.5rem]">
-                          {liveTranscript ? `"${liveTranscript}"` : "Habla cerca del micrófono mencionando los pasos..."}
-                        </div>
+                        {liveTranscript && (
+                          <div className="text-xs sm:text-sm text-slate-200 italic">
+                            Lo que escuchó el radar: "{liveTranscript}"
+                          </div>
+                        )}
                       </div>
                     )}
 
