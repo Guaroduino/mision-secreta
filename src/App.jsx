@@ -269,6 +269,7 @@ export default function App() {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [matchedStepIdsInRep, setMatchedStepIdsInRep] = useState([]);
   const [voiceStatusMsg, setVoiceStatusMsg] = useState("");
+  const [peekInstructions, setPeekInstructions] = useState(false);
   const recognitionRef = useRef(null);
   const repeatTapsRef = useRef(0);
   const cooldownRepRef = useRef(false);
@@ -614,8 +615,9 @@ export default function App() {
     }
   };
 
-  // Detener micrófono al salir de la fase 'repeat'
+  // Detener micrófono al salir de la fase 'repeat' y reiniciar vista de pista
   useEffect(() => {
+    setPeekInstructions(false);
     if (phase !== 'repeat') {
       stopVoiceRecognition();
       setLiveTranscript("");
@@ -1476,9 +1478,26 @@ ${stepsTemplateExample}
 
               {/* Lista de Pasos Encadenados */}
               <div className="my-6 space-y-3">
+                {phase === 'repeat' && (
+                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-amber-950/40 border border-amber-500/30 text-xs text-amber-200">
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <Lock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Modo Memoria Activa: Instrucciones ocultas para recordar sin leer</span>
+                    </span>
+                    <button
+                      onClick={() => setPeekInstructions(p => !p)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-amber-300 font-bold text-[11px] flex items-center gap-1 transition-all"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>{peekInstructions ? 'Ocultar Pista' : 'Ver Pista'}</span>
+                    </button>
+                  </div>
+                )}
+
                 {currentMission.steps.map((st, idx) => {
                   const isChecked = checkedSteps.includes(st.id);
                   const isVoiceDetected = phase === 'repeat' && matchedStepIdsInRep.includes(st.id);
+                  const isBlurredForMemory = phase === 'repeat' && !peekInstructions;
                   return (
                     <div
                       key={st.id}
@@ -1491,7 +1510,9 @@ ${stepsTemplateExample}
                       } ${isChecked ? 'bg-emerald-950/20 border-emerald-600/40 text-slate-300' : ''}`}
                     >
                       <div className="flex items-center gap-3.5">
-                        <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-amber-400 flex items-center justify-center text-lg font-black shadow-sm shrink-0">
+                        <div className={`w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-amber-400 flex items-center justify-center text-lg font-black shadow-sm shrink-0 transition-all ${
+                          isBlurredForMemory ? 'blur-sm select-none' : ''
+                        }`}>
                           {st.icon || idx + 1}
                         </div>
                         <div>
@@ -1499,11 +1520,13 @@ ${stepsTemplateExample}
                             <span>Paso {idx + 1} de {currentMission.steps.length}</span>
                             {isVoiceDetected && (
                               <span className="text-[10px] bg-amber-400 text-slate-950 px-2 py-0.2 rounded-full font-black">
-                                🎙️ ¡Dicho en voz alta!
+                                🎙️ ¡Recordado en voz alta!
                               </span>
                             )}
                           </div>
-                          <div className="text-base font-bold text-white">
+                          <div className={`text-base font-bold text-white transition-all duration-300 ${
+                            isBlurredForMemory ? 'blur-md select-none opacity-65' : ''
+                          }`}>
                             {st.text}
                           </div>
                         </div>
