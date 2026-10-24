@@ -81,29 +81,34 @@ const CREATIVE_SCENARIOS = [
   "Infiltración silenciosa en cámara lenta y hallazgo de objeto brillante o colorido"
 ];
 
-// Banco amplio de acciones físicas y objetos para el generador procedural anti-repetición (respaldo)
-const PROCEDURAL_ACTIONS = [
-  { text: "Camina como pingüino hasta la puerta de la habitación", icon: "🐧" },
-  { text: "Da 3 saltos altos abriendo los brazos como estrella", icon: "⭐" },
-  { text: "Toca el suelo con ambas manos y levántate de un salto", icon: "🐸" },
-  { text: "Gira una vuelta completa sobre tus pies como un trompo", icon: "🌀" },
-  { text: "Camina en puntillas sin hacer ni un ruido durante 5 pasos", icon: "🤫" },
-  { text: "Haz equilibrio en un solo pie mientras cuentas hasta 4", icon: "🦩" },
-  { text: "Toca una silla con ambos codos al mismo tiempo", icon: "🪑" },
-  { text: "Aplaude 3 veces por encima de tu cabeza y 2 veces abajo", icon: "👏" },
-  { text: "Camina hacia atrás 4 pasos como un cangrejo espía", icon: "🦀" },
-  { text: "Haz una pose de estatua de superhéroe durante 4 segundos", icon: "🦸‍♀️" },
-  { text: "Toca el marco de la puerta con la mano derecha y luego con la izquierda", icon: "🚪" },
-  { text: "Camina como un robot mecánico hasta el centro del cuarto", icon: "🤖" },
-  { text: "Cruza los brazos sobre el pecho como momia y da 2 saltitos", icon: "🙅‍♀️" },
-  { text: "Tócate las rodillas, luego los hombros y luego la cabeza", icon: "🙆‍♀️" },
-  { text: "Da 3 pasos gigantes de dinosaurio por la habitación", icon: "🦖" },
-  { text: "Haz como si nadaras en el aire mientras das una vuelta", icon: "🏊‍♀️" },
-  { text: "Toca la pared más cercana con los dos dedos índices", icon: "👉" },
-  { text: "Salta hacia adelante como un canguro 2 veces seguidas", icon: "🦘" },
-  { text: "Camina en cámara lenta como astronauta en la Luna por 4 segundos", icon: "👩‍🚀" },
-  { text: "Haz 2 sentadillas rápidas y saluda como comandante", icon: "🫡" }
-];
+// Generador de acciones físicas dinámicas escaladas según la cantidad de repeticiones/intensidad por paso
+function getScaledProceduralActions(reps = 3) {
+  const r = Math.max(2, Number(reps) || 3);
+  const half = Math.max(2, Math.round(r * 0.7));
+  const secs = Math.max(4, r + 2);
+  return [
+    { text: `Camina como pingüino ${r} pasos seguidos hasta la puerta de la habitación`, icon: "🐧" },
+    { text: `Da ${r} saltos altos abriendo los brazos como estrella`, icon: "⭐" },
+    { text: `Toca el suelo con ambas manos y levántate de un salto ${half} veces`, icon: "🐸" },
+    { text: `Gira ${half} vueltas sobre tus pies con cuidado como un trompo`, icon: "🌀" },
+    { text: `Camina en puntillas sin hacer ni un ruido durante ${r + 3} pasos`, icon: "🤫" },
+    { text: `Haz equilibrio en un solo pie mientras cuentas en voz alta hasta ${secs}`, icon: "🦩" },
+    { text: `Toca una silla con los codos y da ${r} palmadas rápidas`, icon: "🪑" },
+    { text: `Aplaude ${r} veces por encima de tu cabeza y ${half} veces abajo`, icon: "👏" },
+    { text: `Camina hacia atrás ${r} pasos como un cangrejo espía`, icon: "🦀" },
+    { text: `Haz una pose de estatua de superhéroe sin moverte durante ${secs} segundos`, icon: "🦸‍♀️" },
+    { text: `Toca el marco de la puerta ${r} veces alternando mano derecha e izquierda`, icon: "🚪" },
+    { text: `Camina como un robot mecánico dando ${r} pasos por el cuarto`, icon: "🤖" },
+    { text: `Cruza los brazos sobre el pecho como momia y da ${r} saltitos`, icon: "🙅‍♀️" },
+    { text: `Tócate las rodillas, los hombros y la cabeza repitiendo la secuencia ${half} veces`, icon: "🙆‍♀️" },
+    { text: `Da ${r} pasos gigantes de dinosaurio por la habitación`, icon: "🦖" },
+    { text: `Haz como si nadaras en el aire mientras marchas en tu sitio contando hasta ${r}`, icon: "🏊‍♀️" },
+    { text: `Toca dos paredes distintas de la habitación y da ${r} saltos en el centro`, icon: "👉" },
+    { text: `Salta hacia adelante y hacia atrás como un canguro ${r} veces seguidas`, icon: "🦘" },
+    { text: `Camina en cámara lenta como astronauta en la Luna contando hasta ${secs}`, icon: "👩‍🚀" },
+    { text: `Haz ${r} sentadillas de agente élite y saluda como comandante`, icon: "🫡" }
+  ];
+}
 
 const PROCEDURAL_TARGETS = [
   { item: "un lápiz, color o marcador", stepText: "Busca un lápiz, color o marcador y muéstralo frente a la cámara", icon: "✏️" },
@@ -155,8 +160,9 @@ function extractStepKeywords(stepText = '') {
 }
 
 // Generador procedural único (nunca repite la misión anterior cuando se usa sin API Key)
-function buildUniqueProceduralMission(stepsCount, previousTitles = []) {
-  const shuffledActions = [...PROCEDURAL_ACTIONS].sort(() => Math.random() - 0.5);
+function buildUniqueProceduralMission(stepsCount, previousTitles = [], actionReps = 6) {
+  const dynamicActions = getScaledProceduralActions(actionReps);
+  const shuffledActions = [...dynamicActions].sort(() => Math.random() - 0.5);
   const availableTargets = PROCEDURAL_TARGETS.filter(
     t => !previousTitles.some(prev => prev.includes(t.item))
   );
@@ -179,7 +185,8 @@ function buildUniqueProceduralMission(stepsCount, previousTitles = []) {
   const codeNumber = Math.floor(100 + Math.random() * 900);
   return {
     stepsCount: selectedSteps.length,
-    category: 'Misión Dinámica de Campo',
+    actionReps,
+    category: `Misión Dinámica • Intensidad ${actionReps}x`,
     title: `Operación Secreta #${codeNumber}: ${chosenTarget.icon}`,
     targetItem: chosenTarget.item,
     steps: selectedSteps
@@ -241,12 +248,13 @@ export default function App() {
   const [usedObjects, setUsedObjects] = useState([]);
   const [stepsSinceCleanup, setStepsSinceCleanup] = useState(0);
 
-  // Estado de la Misión Actual, Historial Anti-Repetición y Generador IA
+  // Estado de la Misión Actual, Intensidad por Paso, Historial Anti-Repetición y Generador IA
   const [difficultySteps, setDifficultySteps] = useState(3);
+  const [actionReps, setActionReps] = useState(8); // Cantidad de repeticiones/largo por paso (ej: 3 saltos vs 10 o 15 saltos)
   const [selectedTheme, setSelectedTheme] = useState('sorpresa');
   const [customPrompt, setCustomPrompt] = useState('');
   const [missionHistory, setMissionHistory] = useState([]);
-  const [currentMission, setCurrentMission] = useState(() => buildUniqueProceduralMission(3, []));
+  const [currentMission, setCurrentMission] = useState(() => buildUniqueProceduralMission(3, [], 8));
   const [aiErrorMsg, setAiErrorMsg] = useState(null);
   
   // Flujo del protocolo: 'listen' -> 'repeat' -> 'action' -> 'verify' -> 'success'
@@ -916,20 +924,22 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
     }
   };
 
-  // Generador de Misiones e Instrucciones con Gemini IA (con memoria anti-repetición)
+  // Generador de Misiones e Instrucciones con Gemini IA (con memoria anti-repetición e intensidad configurable)
   const generateNewAIMission = async (
     stepsToGenerate = difficultySteps,
     themeId = selectedTheme,
-    overrideKey = apiKey
+    overrideKey = apiKey,
+    repsToUse = actionReps
   ) => {
     const targetSteps = typeof stepsToGenerate === 'number' ? stepsToGenerate : difficultySteps;
+    const targetReps = typeof repsToUse === 'number' ? repsToUse : actionReps;
     const activeKeyToUse = (typeof overrideKey === 'string' ? overrideKey : apiKey).trim();
 
     if (!activeKeyToUse) {
-      const procMission = buildUniqueProceduralMission(targetSteps, missionHistory);
+      const procMission = buildUniqueProceduralMission(targetSteps, missionHistory, targetReps);
       setMissionHistory(prev => [...prev.slice(-15), `${procMission.title} (${procMission.targetItem})`]);
       setCurrentMission(procMission);
-      resetMissionFlow(procMission.steps.length);
+      resetMissionFlow(procMission.steps.length, targetReps);
       SpyAudio.playSuccess();
       return;
     }
@@ -958,7 +968,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
       return `    { "id": ${idx + 1}, "text": "${
         isLast
           ? 'Último paso: traer el objeto o mostrar el resultado frente a la cámara'
-          : `Acción física corta, original y divertida número ${idx + 1}`
+          : `Acción física con ~${targetReps} repeticiones o ${targetReps + 4} segundos (ej: dar ${targetReps} saltos, ${targetReps} pasos gigantes, ${targetReps} palmadas, etc.)`
       }", "icon": "✨" }`;
     }).join(',\n');
 
@@ -967,6 +977,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
 Semilla creativa única: #${randomSeedId} — Inspiración de estilo: "${randomScenario}".
 Crea una misión física TOTALMENTE NUEVA, original y diferente a las anteriores para realizar dentro de casa.
 CANTIDAD OBLIGATORIA DE PASOS: EXACTAMENTE ${targetSteps} pasos secuenciales (numerados del 1 al ${targetSteps}).
+LARGO E INTENSIDAD DE CADA PASO: Nivel ${targetReps}x — Cada paso de movimiento o ejercicio debe pedir alrededor de ${targetReps} repeticiones (por ejemplo: "${targetReps} saltos", "${targetReps} sentadillas", "${targetReps} pasos de gigante", "${targetReps} palmadas", o mantener equilibrio por ${targetReps + 4} segundos) y puede combinar dos detalles en la misma oración cuando la intensidad es alta (${targetReps} >= 8).
 ${themeInstruction}
 
 HISTORIAL DE MISIONES YA JUGADAS (PROHIBIDO REPETIR ESTOS TÍTULOS, OBJETOS O MISMAS ACCIONES):
@@ -974,15 +985,14 @@ HISTORIAL DE MISIONES YA JUGADAS (PROHIBIDO REPETIR ESTOS TÍTULOS, OBJETOS O MI
 
 REGLAS OBLIGATORIAS:
 1. PROHIBIDO repetir el objeto final ("${currentMission.targetItem}") ni los mismos pasos de la misión anterior. Inventa movimientos físicos distintos y pide un objeto casero diferente.
-2. Todos los pasos deben ser acciones físicas seguras y divertidas en el MUNDO REAL (ej: caminar de formas graciosas, giros, tocar muebles distintos, equilibrios, saltos, palmadas rítmicas, buscar objetos de colores/formas nuevas, etc.).
-3. Cada instrucción debe ser clara, breve (1 sola oración fácil de memorizar para una niña) y tener un emoji distinto.
-4. El paso final (Paso ${targetSteps}) SIEMPRE debe pedir traer el nuevo objeto o mostrar la prueba frente a la cámara de la base.
-5. La lista "steps" debe tener EXACTAMENTE ${targetSteps} elementos.
+2. Usa cantidades cercanas a ${targetReps} en los ejercicios de cada paso (ej: en lugar de pedir solo 2 o 3 saltos, pide ${targetReps} saltos, ${targetReps} pasos, ${targetReps} toques o ${targetReps + 4} segundos).
+3. El paso final (Paso ${targetSteps}) SIEMPRE debe pedir traer el nuevo objeto o mostrar la prueba frente a la cámara de la base.
+4. La lista "steps" debe tener EXACTAMENTE ${targetSteps} elementos.
 
 Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
 {
   "title": "Nombre creativo y nuevo de operación espía",
-  "category": "IA • ${themeObj.label.replace(/^[^\s]+\s/, '')}",
+  "category": "IA • ${themeObj.label.replace(/^[^\s]+\s/, '')} (${targetReps}x)",
   "targetItem": "descripción breve del nuevo objeto o resultado a mostrar ante la cámara al final",
   "steps": [
 ${stepsTemplateExample}
@@ -1011,6 +1021,7 @@ ${stepsTemplateExample}
           ...missionJson,
           isAI: true,
           isCleanupMission: false,
+          actionReps: targetReps,
           modelUsed: usedModel,
           stepsCount: normalizedSteps.length,
           steps: normalizedSteps
@@ -1020,19 +1031,19 @@ ${stepsTemplateExample}
           `${newMission.title} -> objeto: ${newMission.targetItem} -> pasos: ${normalizedSteps.map(s => s.text).join('; ')}`
         ]);
         setCurrentMission(newMission);
-        resetMissionFlow(normalizedSteps.length);
+        resetMissionFlow(normalizedSteps.length, targetReps);
         SpyAudio.playSuccess();
-        speakText(`¡Nueva misión secreta de ${normalizedSteps.length} pasos! ${newMission.title}.`);
+        speakText(`¡Nueva misión secreta de ${normalizedSteps.length} pasos con intensidad ${targetReps}! ${newMission.title}.`);
       } else {
         throw new Error("El formato de pasos devuelto por la IA no fue válido.");
       }
     } catch (e) {
       console.warn("Fallo al generar misión con IA:", e);
       setAiErrorMsg(`Aviso IA (${e.message}). Se generó una misión dinámica nueva de ${targetSteps} pasos.`);
-      const procMission = buildUniqueProceduralMission(targetSteps, missionHistory);
+      const procMission = buildUniqueProceduralMission(targetSteps, missionHistory, targetReps);
       setMissionHistory(prev => [...prev.slice(-15), `${procMission.title} (${procMission.targetItem})`]);
       setCurrentMission(procMission);
-      resetMissionFlow(procMission.steps.length);
+      resetMissionFlow(procMission.steps.length, targetReps);
     } finally {
       setIsAnalyzingAI(false);
       setIsGeneratingMission(false);
@@ -1055,11 +1066,12 @@ ${stepsTemplateExample}
     await generateNewAIMission(nextStepNum, selectedTheme);
   };
 
-  const resetMissionFlow = (stepsCount = difficultySteps) => {
+  const resetMissionFlow = (stepsCount = difficultySteps, repsCount = actionReps) => {
     setPhase('listen');
     setRepeatTaps(0);
     repeatTapsRef.current = 0;
-    setTimerSeconds(Math.max(60, stepsCount * 30));
+    const perStepSeconds = 25 + Math.round(repsCount * 1.5);
+    setTimerSeconds(Math.max(60, stepsCount * perStepSeconds));
     setIsTimerActive(false);
     setCheckedSteps([]);
     setCapturedImage(null);
@@ -1069,7 +1081,13 @@ ${stepsTemplateExample}
   const selectStepDifficulty = (num) => {
     setDifficultySteps(num);
     setAiErrorMsg(null);
-    generateNewAIMission(num, selectedTheme);
+    generateNewAIMission(num, selectedTheme, apiKey, actionReps);
+  };
+
+  const selectActionReps = (newReps) => {
+    setActionReps(newReps);
+    setAiErrorMsg(null);
+    generateNewAIMission(difficultySteps, selectedTheme, apiKey, newReps);
   };
 
   const isCleanupNext =
@@ -1207,6 +1225,63 @@ ${stepsTemplateExample}
                 <Plus className="w-3.5 h-3.5" />
                 <span>Paso</span>
               </button>
+            </div>
+          </div>
+
+          {/* Control de Largo / Intensidad de cada paso (Slider + Botones rápidos: ej. 3 saltos vs 10 o 20 saltos) */}
+          <div className="pt-3 border-t border-slate-800/80 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <div className="text-xs text-cyan-400 font-bold uppercase tracking-wider font-mono flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5" />
+                <span>Largo / Repeticiones dentro de cada paso: <strong className="text-amber-300 text-sm">{actionReps}x</strong></span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Define si cada paso pide acciones cortas (ej: 3 saltos) o largas (ej: {actionReps} saltos, {actionReps} pasos o {actionReps + 4}s de equilibrio).
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Slider continuo de 2 a 20 repeticiones */}
+              <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl">
+                <span className="text-[10px] font-mono text-slate-400">2x</span>
+                <input
+                  type="range"
+                  min={2}
+                  max={20}
+                  step={1}
+                  value={actionReps}
+                  onChange={(e) => setActionReps(Number(e.target.value))}
+                  onMouseUp={(e) => selectActionReps(Number(e.currentTarget.value))}
+                  onTouchEnd={(e) => selectActionReps(Number(e.currentTarget.value))}
+                  disabled={isAnalyzingAI}
+                  className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                />
+                <span className="text-[10px] font-mono text-slate-400">20x</span>
+              </div>
+
+              {/* Botones rápidos de intensidad */}
+              <div className="flex items-center gap-1.5">
+                {[
+                  { label: '⚡ 3x Corto', val: 3 },
+                  { label: '🔥 6x Medio', val: 6 },
+                  { label: '💪 10x Largo', val: 10 },
+                  { label: '🚀 15x Intenso', val: 15 },
+                  { label: '👑 20x Extremo', val: 20 }
+                ].map(preset => (
+                  <button
+                    key={preset.val}
+                    onClick={() => selectActionReps(preset.val)}
+                    disabled={isAnalyzingAI}
+                    className={`px-2.5 py-1.5 rounded-xl font-black text-[11px] transition-all disabled:opacity-50 ${
+                      actionReps === preset.val
+                        ? 'bg-cyan-400 text-slate-950 shadow-md shadow-cyan-400/30 scale-105'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
