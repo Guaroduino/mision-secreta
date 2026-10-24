@@ -4,7 +4,7 @@ import {
   Trophy, ShieldAlert, Award, Play, Eye, Flame, AlertCircle, 
   VolumeX, ArrowRight, UserCheck, RefreshCw, Zap, Check, Lock, Video,
   Key, Settings, ExternalLink, Trash2, CheckCircle, ShieldCheck, X,
-  Plus, Wand2, Sliders
+  Plus, Wand2, Sliders, Mic, MicOff
 } from 'lucide-react';
 
 // Generador de efectos de audio con Web Audio API (cero dependencias externas)
@@ -129,6 +129,31 @@ const CANDIDATE_MODELS = [
   'gemini-2.0-flash'
 ];
 
+// Palabras vacías a ignorar al comparar lo que dice la niña por voz con los pasos
+const STOP_WORDS = new Set([
+  'para', 'como', 'hasta', 'con', 'una', 'uno', 'unos', 'unas', 'del', 'los', 'las',
+  'que', 'por', 'tus', 'mis', 'sus', 'este', 'esta', 'estos', 'estas', 'sobre',
+  'entre', 'hacia', 'desde', 'donde', 'cuando', 'muy', 'mas', 'sin', 'cámara', 'camara',
+  'base', 'lente', 'radar', 'muéstralo', 'muestralo', 'aquí', 'aqui', 'frente'
+]);
+
+// Normalizar texto sin tildes ni signos para comparación de voz flexible
+function normalizeText(str = '') {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Extraer palabras clave representativas de un paso
+function extractStepKeywords(stepText = '') {
+  const words = normalizeText(stepText).split(' ');
+  return words.filter(w => (w.length >= 4 && !STOP_WORDS.has(w)) || /^\d+$/.test(w));
+}
+
 // Generador procedural único (nunca repite la misión anterior cuando se usa sin API Key)
 function buildUniqueProceduralMission(stepsCount, previousTitles = []) {
   const shuffledActions = [...PROCEDURAL_ACTIONS].sort(() => Math.random() - 0.5);
@@ -161,6 +186,38 @@ function buildUniqueProceduralMission(stepsCount, previousTitles = []) {
   };
 }
 
+// Generador procedural de misión de recolección y orden de los objetos usados
+function buildProceduralCleanupMission(objectsToClean = []) {
+  const uniqueObjects = Array.from(new Set(objectsToClean.filter(Boolean)));
+  const itemsList = uniqueObjects.length > 0
+    ? uniqueObjects
+    : ['los objetos que usaste en las misiones anteriores'];
+
+  const cleanupSteps = itemsList.map((obj, idx) => ({
+    id: idx + 1,
+    text: `Toma ${obj} y devuélvelo ordenadamente a su lugar original en la casa`,
+    icon: "🧹"
+  }));
+
+  cleanupSteps.push({
+    id: cleanupSteps.length + 1,
+    text: "Da un salto de victoria y muestra tus dos manos libres con el pulgar arriba frente a la cámara",
+    icon: "👍"
+  });
+
+  return {
+    isCleanupMission: true,
+    stepsCount: cleanupSteps.length,
+    category: '🧹 Operación Orden del Cuartel',
+    title: 'Misión Especial: Guardar Artefactos Secretos',
+    targetItem: 'tus manos libres haciendo señal de pulgar arriba 👍 tras haber guardado todo',
+    steps: cleanupSteps
+  };
+}
+
+// Meta de pasos acumulados para disparar automáticamente la Misión de Recoger Objetos
+const CLEANUP_STEPS_THRESHOLD = 9;
+
 export default function App() {
   // Manejo de Gemini API Key y Modelo
   const [apiKey, setApiKey] = useState(() => {
@@ -180,6 +237,10 @@ export default function App() {
   const [completedCount, setCompletedCount] = useState(2);
   const [speechEnabled, setSpeechEnabled] = useState(true);
 
+  // Seguimiento de objetos usados para la Misión de Recoger Objetos
+  const [usedObjects, setUsedObjects] = useState([]);
+  const [stepsSinceCleanup, setStepsSinceCleanup] = useState(0);
+
   // Estado de la Misión Actual, Historial Anti-Repetición y Generador IA
   const [difficultySteps, setDifficultySteps] = useState(3);
   const [selectedTheme, setSelectedTheme] = useState('sorpresa');
@@ -195,6 +256,15 @@ export default function App() {
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [checkedSteps, setCheckedSteps] = useState([]);
 
+  // Reconocimiento de Voz (SpeechRecognition) para la Fase 2 (Repetir instrucciones)
+  const [isListeningVoice, setIsListeningVoice] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [matchedStepIdsInRep, setMatchedStepIdsInRep] = useState([]);
+  const [voiceStatusMsg, setVoiceStatusMsg] = useState("");
+  const recognitionRef = useRef(null);
+  const repeatTapsRef = useRef(0);
+  const cooldownRepRef = useRef(false);
+
   // Cámara e IA Gemini
   const [cameraActive, setCameraActive] = useState(false);
   const [isAnalyzingAI, setIsAnalyzingAI] = useState(false);
@@ -207,6 +277,10 @@ export default function App() {
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
   const didInitialAIFetch = useRef(false);
+
+  useEffect(() => {
+    repeatTapsRef.current = repeatTaps;
+  }, [repeatTaps]);
 
   useEffect(() => {
     if (showKeyModal) {
@@ -261,7 +335,6 @@ export default function App() {
       }
     }
 
-    // Consultar lista oficial de modelos disponibles para esta API Key si todos los candidatos fallan
     try {
       const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`);
       if (listRes.ok) {
@@ -381,6 +454,169 @@ export default function App() {
     speakText(speech);
   };
 
+  // ================== RECONOCIMIENTO DE VOZ PARA REPETICIÓN (FASE 2) ==================
+  const stopVoiceRecognition = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.stop();
+      } catch (_) {}
+      recognitionRef.current = null;
+    }
+    setIsListeningVoice(false);
+  };
+
+  const registerCompletedRepetition = (source = 'voice') => {
+    if (cooldownRepRef.current) return;
+    cooldownRepRef.current = true;
+    setTimeout(() => {
+      cooldownRepRef.current = false;
+    }, 1200);
+
+    const next = repeatTapsRef.current + 1;
+    repeatTapsRef.current = next;
+    setRepeatTaps(next);
+    setMatchedStepIdsInRep([]);
+    setLiveTranscript("");
+    SpyAudio.playBeep(440 + next * 120, 'sine', 0.15);
+
+    if (next >= 3) {
+      stopVoiceRecognition();
+      setVoiceStatusMsg("¡3 repeticiones completadas! ¡A cumplir la misión!");
+      setTimeout(() => {
+        setPhase('action');
+        setIsTimerActive(true);
+        SpyAudio.playSuccess();
+        speakText("¡Cerebro activado! Tienes el tiempo en marcha para completar la misión en la casa.");
+      }, 450);
+    } else if (source === 'voice') {
+      setVoiceStatusMsg(`¡Excelente! Repetición ${next} de 3 detectada por voz. ¡Repítela una vez más!`);
+    }
+  };
+
+  const startVoiceRecognition = () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) {
+      setVoiceStatusMsg("Tu navegador no soporta reconocimiento de voz directo. Usa el botón manual de abajo.");
+      return;
+    }
+
+    // Cancelar síntesis de voz si estaba hablando para que el micrófono escuche a la niña
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    stopVoiceRecognition();
+
+    const recognition = new SpeechRecognitionClass();
+    recognition.lang = 'es-ES';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    let accumulatedNormalized = "";
+
+    recognition.onstart = () => {
+      setIsListeningVoice(true);
+      setVoiceStatusMsg("🎙️ Escuchando... Di los pasos de la misión en voz alta.");
+      SpyAudio.playRadar();
+    };
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      let finalChunk = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcriptPiece = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalChunk += " " + transcriptPiece;
+        } else {
+          interim += " " + transcriptPiece;
+        }
+      }
+
+      if (finalChunk) {
+        accumulatedNormalized += " " + normalizeText(finalChunk);
+      }
+
+      const fullSpoken = (accumulatedNormalized + " " + normalizeText(interim)).trim();
+      setLiveTranscript((finalChunk + " " + interim).trim());
+
+      if (!fullSpoken) return;
+      const spokenWords = fullSpoken.split(' ').filter(Boolean);
+
+      // Evaluar cuántos pasos de la misión actual ya mencionó
+      const matchedIds = [];
+      currentMission.steps.forEach((step) => {
+        const keywords = extractStepKeywords(step.text);
+        if (keywords.length === 0) {
+          matchedIds.push(step.id);
+          return;
+        }
+        // Coincidencia flexible (prefijo de 4 letras para tolerar conjugaciones infantiles)
+        const hasMatch = keywords.some(kw => {
+          const root = kw.slice(0, Math.min(kw.length, 4));
+          return spokenWords.some(sw => sw.includes(root) || root.includes(sw));
+        });
+        if (hasMatch) {
+          matchedIds.push(step.id);
+        }
+      });
+
+      setMatchedStepIdsInRep(matchedIds);
+
+      // Umbral amigable para niños: si mencionó palabras clave de al menos la mitad de los pasos
+      // (o si dijo al menos 5 palabras por paso en total describiendo la secuencia)
+      const requiredStepsMatched = Math.max(1, Math.ceil(currentMission.steps.length * 0.6));
+      const minSpokenWords = Math.max(4, currentMission.steps.length * 3);
+
+      if (
+        (matchedIds.length >= requiredStepsMatched && spokenWords.length >= minSpokenWords - 1) ||
+        spokenWords.length >= currentMission.steps.length * 6
+      ) {
+        accumulatedNormalized = "";
+        registerCompletedRepetition('voice');
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error === 'not-allowed') {
+        setVoiceStatusMsg("Permiso de micrófono denegado. Puedes darle permiso en el navegador o usar el botón manual.");
+        setIsListeningVoice(false);
+      }
+    };
+
+    recognition.onend = () => {
+      // Si seguimos en la fase 'repeat' y aún faltan repeticiones, mantener el micrófono activo
+      if (recognitionRef.current && repeatTapsRef.current < 3) {
+        try {
+          recognition.start();
+        } catch (_) {
+          setIsListeningVoice(false);
+        }
+      } else {
+        setIsListeningVoice(false);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch (e) {
+      console.warn("No se pudo iniciar SpeechRecognition:", e);
+    }
+  };
+
+  // Detener micrófono al salir de la fase 'repeat'
+  useEffect(() => {
+    if (phase !== 'repeat') {
+      stopVoiceRecognition();
+      setLiveTranscript("");
+      setMatchedStepIdsInRep([]);
+      setVoiceStatusMsg("");
+    }
+    return () => stopVoiceRecognition();
+  }, [phase]);
+
   // Temporizador de cuenta regresiva
   useEffect(() => {
     let interval = null;
@@ -475,7 +711,7 @@ export default function App() {
         setIsAnalyzingAI(false);
         const fallbackResult = {
           cumplido: true,
-          mensaje_divertido: "¡Gran trabajo agente! Sensores locales confirman el objeto. (Tip: Añade tu API Key de Gemini para activar la visión artificial en vivo).",
+          mensaje_divertido: "¡Gran trabajo agente! Sensores locales confirman el objetivo. (Tip: Añade tu API Key de Gemini para activar la visión artificial en vivo).",
           detalles_observados: "Validación por sensor interno del Cuartel."
         };
         setAiFeedback(fallbackResult);
@@ -492,8 +728,8 @@ La misión solicitaba mostrar al final: "${currentMission.targetItem || currentM
 Pasos completos asignados (${currentMission.steps.length} pasos): ${currentMission.steps.map(s => s.text).join(' | ')}.
 
 Observa con atención la foto enviada desde la webcam.
-¿Se observa en la imagen el objeto, la construcción, la persona haciendo la acción, o el elemento solicitado (${currentMission.targetItem})? 
-Sé muy tolerante con la iluminación, reflejos o si la niña sostiene el objeto con sus manos.
+¿Se observa en la imagen el objeto, la construcción, la persona haciendo la señal/acción, o el elemento solicitado (${currentMission.targetItem})? 
+Sé muy tolerante con la iluminación, reflejos o si la niña sostiene el objeto o muestra sus manos/pulgar arriba.
 
 Responde ÚNICAMENTE un objeto JSON válido con este formato:
 {
@@ -533,7 +769,7 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
         handleMissionVictory(parsed.mensaje_divertido);
       } else {
         SpyAudio.playAlarm();
-        speakText("Casi lo tenemos, agente. " + (parsed.mensaje_divertido || "Muestra el objeto un poco más cerca de la cámara."));
+        speakText("Casi lo tenemos, agente. " + (parsed.mensaje_divertido || "Muestra el resultado un poco más cerca de la cámara."));
       }
     } catch (e) {
       console.warn("Fallo en análisis visual:", e);
@@ -550,14 +786,134 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
     }
   };
 
-  // Victoria de Misión
+  // Victoria de Misión + Registro de Objetos Usados para la Misión de Orden
   const handleMissionVictory = (cheerMessage) => {
     SpyAudio.playSuccess();
     setPhase('success');
-    const points = currentMission.steps.length * 30;
+
+    const isCleanup = Boolean(currentMission.isCleanupMission);
+    const points = currentMission.steps.length * 30 + (isCleanup ? 60 : 0);
     setXp(x => x + points);
     setCompletedCount(c => c + 1);
-    speakText(cheerMessage || "¡Misión secreta cumplida con honores! Tu memoria operativa está en nivel supremo.");
+
+    if (isCleanup) {
+      // Si acaba de completar la misión de recoger objetos, vaciar la lista de objetos pendientes
+      setUsedObjects([]);
+      setStepsSinceCleanup(0);
+      speakText(cheerMessage || "¡Cuartel General impecable! Guardaste todos los objetos secretos en su lugar y ganaste un bono extra.");
+    } else {
+      // Registrar el objeto que se usó en esta misión y sumar los pasos acumulados
+      if (currentMission.targetItem) {
+        setUsedObjects(prev => {
+          if (prev.includes(currentMission.targetItem)) return prev;
+          return [...prev, currentMission.targetItem];
+        });
+      }
+      setStepsSinceCleanup(prev => prev + currentMission.steps.length);
+      speakText(cheerMessage || "¡Misión secreta cumplida con honores! Tu memoria operativa está en nivel supremo.");
+    }
+  };
+
+  // Generador de Misión Especial para RECOGER Y GUARDAR los objetos usados en las actividades previas
+  const generateCleanupMission = async (objectsList = usedObjects) => {
+    const itemsToClean = objectsList.length > 0
+      ? objectsList
+      : [currentMission.targetItem || 'los objetos usados en tus misiones'];
+
+    const activeKeyToUse = apiKey.trim();
+
+    if (!activeKeyToUse) {
+      const localCleanup = buildProceduralCleanupMission(itemsToClean);
+      setCurrentMission(localCleanup);
+      resetMissionFlow(localCleanup.steps.length);
+      SpyAudio.playSuccess();
+      speakText(`¡Alerta de Orden del Cuartel! Es hora de recoger y guardar en su lugar los objetos que usamos: ${itemsToClean.join(', ')}.`);
+      return;
+    }
+
+    setIsAnalyzingAI(true);
+    setIsGeneratingMission(true);
+    setPhase('listen');
+    setAiErrorMsg(null);
+    SpyAudio.playRadar();
+
+    const totalCleanupSteps = Math.max(itemsToClean.length + 1, difficultySteps);
+
+    const prompt = `Eres el Cuartel General de una Academia de Espías para niñas.
+En las misiones anteriores la agente utilizó estos objetos reales de su casa y ahora están fuera de su sitio:
+OBJETOS USADOS QUE DEBE RECOGER Y GUARDAR:
+${itemsToClean.map((item, i) => `${i + 1}. ${item}`).join('\n')}
+
+Crea una "🧹 Misión Especial de Orden Secreto" de EXACTAMENTE ${totalCleanupSteps} pasos secuenciales donde:
+- La niña deba recoger cada uno de esos objetos (${itemsToClean.join(', ')}) y llevarlos de vuelta a su lugar correcto en la casa de forma divertida (ej: caminando como ninja, en puntillas, dando un giro al guardarlo, etc.).
+- El último paso (Paso ${totalCleanupSteps}) SIEMPRE debe ser regresar a la cámara y mostrar sus dos manos vacías con los pulgares arriba 👍 para demostrar que ya guardó todo.
+
+Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
+{
+  "title": "Operación Cuartel Impecable: Guardar Evidencias",
+  "category": "🧹 Misión Especial de Orden",
+  "targetItem": "tus dos manos libres con los pulgares arriba 👍 tras guardar todos los objetos",
+  "steps": [
+    { "id": 1, "text": "Paso 1 para recoger y guardar el primer objeto en su sitio", "icon": "🧹" }
+  ]
+}`;
+
+    try {
+      const { data, usedModel } = await callGeminiWithFallback(activeKeyToUse, {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.85
+        }
+      });
+
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const missionJson = parseCleanJson(rawText);
+
+      if (missionJson.steps && Array.isArray(missionJson.steps) && missionJson.steps.length > 0) {
+        const normalizedSteps = missionJson.steps.map((s, idx) => ({
+          id: idx + 1,
+          text: s.text || `Guarda el objeto ${idx + 1} en su sitio`,
+          icon: s.icon || "🧹"
+        }));
+        const cleanupMission = {
+          ...missionJson,
+          isAI: true,
+          isCleanupMission: true,
+          modelUsed: usedModel,
+          stepsCount: normalizedSteps.length,
+          steps: normalizedSteps
+        };
+        setCurrentMission(cleanupMission);
+        resetMissionFlow(normalizedSteps.length);
+        SpyAudio.playSuccess();
+        speakText(`¡Misión Especial de Orden del Cuartel! Vamos a guardar en su lugar los objetos que usamos.`);
+      } else {
+        throw new Error("Formato inválido");
+      }
+    } catch (e) {
+      console.warn("Usando misión de orden procedural:", e);
+      const localCleanup = buildProceduralCleanupMission(itemsToClean);
+      setCurrentMission(localCleanup);
+      resetMissionFlow(localCleanup.steps.length);
+    } finally {
+      setIsAnalyzingAI(false);
+      setIsGeneratingMission(false);
+    }
+  };
+
+  // Avanzar a la siguiente misión (verifica automáticamente si ya toca recoger los objetos usados)
+  const handleNextMission = async (targetSteps = difficultySteps, themeId = selectedTheme) => {
+    const shouldTriggerCleanup =
+      !currentMission.isCleanupMission &&
+      usedObjects.length >= 2 &&
+      (stepsSinceCleanup >= CLEANUP_STEPS_THRESHOLD || usedObjects.length >= 3);
+
+    if (shouldTriggerCleanup) {
+      await generateCleanupMission(usedObjects);
+    } else {
+      await generateNewAIMission(targetSteps, themeId);
+    }
   };
 
   // Generador de Misiones e Instrucciones con Gemini IA (con memoria anti-repetición)
@@ -569,7 +925,6 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
     const targetSteps = typeof stepsToGenerate === 'number' ? stepsToGenerate : difficultySteps;
     const activeKeyToUse = (typeof overrideKey === 'string' ? overrideKey : apiKey).trim();
 
-    // Si no tiene API Key configurada, generar una misión procedural nueva (nunca repetida) y avisar
     if (!activeKeyToUse) {
       const procMission = buildUniqueProceduralMission(targetSteps, missionHistory);
       setMissionHistory(prev => [...prev.slice(-15), `${procMission.title} (${procMission.targetItem})`]);
@@ -609,7 +964,7 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
 
     const prompt = `Eres un diseñador experto en neuroeducación infantil y juegos de espías para entrenar la memoria operativa (memoria de trabajo) y el seguimiento de instrucciones secuenciales.
 
- Semilla creativa única: #${randomSeedId} — Inspiración de estilo: "${randomScenario}".
+Semilla creativa única: #${randomSeedId} — Inspiración de estilo: "${randomScenario}".
 Crea una misión física TOTALMENTE NUEVA, original y diferente a las anteriores para realizar dentro de casa.
 CANTIDAD OBLIGATORIA DE PASOS: EXACTAMENTE ${targetSteps} pasos secuenciales (numerados del 1 al ${targetSteps}).
 ${themeInstruction}
@@ -655,6 +1010,7 @@ ${stepsTemplateExample}
         const newMission = {
           ...missionJson,
           isAI: true,
+          isCleanupMission: false,
           modelUsed: usedModel,
           stepsCount: normalizedSteps.length,
           steps: normalizedSteps
@@ -702,6 +1058,7 @@ ${stepsTemplateExample}
   const resetMissionFlow = (stepsCount = difficultySteps) => {
     setPhase('listen');
     setRepeatTaps(0);
+    repeatTapsRef.current = 0;
     setTimerSeconds(Math.max(60, stepsCount * 30));
     setIsTimerActive(false);
     setCheckedSteps([]);
@@ -714,6 +1071,11 @@ ${stepsTemplateExample}
     setAiErrorMsg(null);
     generateNewAIMission(num, selectedTheme);
   };
+
+  const isCleanupNext =
+    !currentMission.isCleanupMission &&
+    usedObjects.length >= 2 &&
+    (stepsSinceCleanup >= CLEANUP_STEPS_THRESHOLD || usedObjects.length >= 3);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-400 selection:text-black">
@@ -740,6 +1102,26 @@ ${stepsTemplateExample}
           </div>
 
           <div className="flex items-center gap-2.5">
+            {/* Botón rápido de Misión de Orden si hay objetos usados */}
+            {usedObjects.length > 0 && (
+              <button
+                onClick={() => generateCleanupMission(usedObjects)}
+                disabled={isGeneratingMission}
+                title={`Objetos por guardar: ${usedObjects.join(', ')}`}
+                className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold transition-all ${
+                  isCleanupNext
+                    ? 'bg-teal-950/90 border-teal-400 text-teal-200 animate-bounce'
+                    : 'bg-slate-800/90 border-slate-700 text-teal-300 hover:bg-slate-700'
+                }`}
+              >
+                <span>🧹</span>
+                <span className="hidden md:inline">Recoger Objetos</span>
+                <span className="bg-teal-500/20 border border-teal-400/40 text-teal-200 px-1.5 py-0.2 rounded-full text-[10px] font-mono">
+                  {usedObjects.length}
+                </span>
+              </button>
+            )}
+
             {/* Botón de Configuración de API Key */}
             <button
               onClick={() => setShowKeyModal(true)}
@@ -795,7 +1177,7 @@ ${stepsTemplateExample}
                 <span>Cantidad de Pasos en Memoria Operativa</span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Elige de 2 a 8+ pasos. Cada prueba se inventa desde cero sin repetir las anteriores.
+                Elige de 2 a 8+ pasos. Cada cierta cantidad de pasos se activará una misión especial para guardar los objetos usados.
               </p>
             </div>
 
@@ -827,6 +1209,35 @@ ${stepsTemplateExample}
               </button>
             </div>
           </div>
+
+          {/* Barra de progreso hacia la siguiente Misión de Recoger Objetos */}
+          {usedObjects.length > 0 && (
+            <div className="p-3 rounded-2xl bg-slate-950/90 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                  <span>🧹 Objetos usados en actividades recientes ({usedObjects.length}):</span>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    ({Math.min(stepsSinceCleanup, CLEANUP_STEPS_THRESHOLD)}/{CLEANUP_STEPS_THRESHOLD} pasos para Misión de Orden automática)
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {usedObjects.map((obj, i) => (
+                    <span key={i} className="text-[11px] bg-teal-950/60 border border-teal-700/50 text-teal-200 px-2 py-0.5 rounded-lg">
+                      • {obj}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={() => generateCleanupMission(usedObjects)}
+                disabled={isGeneratingMission}
+                className="px-3.5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs shrink-0 shadow-md shadow-teal-500/10 transition-all"
+              >
+                🧹 Lanzar Misión de Recoger Ahora
+              </button>
+            </div>
+          )}
 
           {/* Barra del Generador de Instrucciones con IA */}
           <div className="pt-3 border-t border-slate-800/80 space-y-3">
@@ -901,7 +1312,7 @@ ${stepsTemplateExample}
           <div className={`p-2.5 rounded-xl border transition-all ${
             phase === 'repeat' ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md shadow-amber-950' : 'bg-slate-900/40 border-slate-800 text-slate-500'
           }`}>
-            <span>2. Repetir</span>
+            <span>2. Repetir (Voz)</span>
           </div>
           <div className={`p-2.5 rounded-xl border transition-all ${
             phase === 'action' ? 'bg-indigo-950/80 border-indigo-500 text-indigo-300 shadow-md shadow-indigo-950' : 'bg-slate-900/40 border-slate-800 text-slate-500'
@@ -916,7 +1327,9 @@ ${stepsTemplateExample}
         </div>
 
         {/* ================= TARJETA PRINCIPAL DE MISIÓN ================= */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-8 shadow-2xl relative overflow-hidden">
+        <div className={`bg-slate-900 border rounded-3xl p-5 sm:p-8 shadow-2xl relative overflow-hidden ${
+          currentMission.isCleanupMission ? 'border-teal-500/70' : 'border-slate-800'
+        }`}>
           
           {/* Pantalla dedicada de carga mientras Gemini IA inventa la misión */}
           {isGeneratingMission ? (
@@ -927,7 +1340,7 @@ ${stepsTemplateExample}
               </div>
               <div className="space-y-2 max-w-md">
                 <span className="text-[11px] font-mono uppercase tracking-widest bg-purple-950/90 border border-purple-500/50 text-purple-300 px-3 py-1 rounded-full font-bold">
-                   transmisor gemini ia activo
+                  transmisor gemini ia activo
                 </span>
                 <h3 className="text-xl sm:text-2xl font-black text-white pt-1">
                   Inventando nueva misión secreta de {difficultySteps} pasos...
@@ -939,332 +1352,392 @@ ${stepsTemplateExample}
             </div>
           ) : (
             <>
-          {/* Encabezado de la Misión */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs bg-slate-800 border border-slate-700 text-slate-300 px-2.5 py-0.5 rounded-md font-mono">
-                  {currentMission.category}
-                </span>
-                {currentMission.isAI && (
-                  <span className="text-[11px] bg-purple-950/80 border border-purple-500/50 text-purple-300 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" />
-                    Creada por IA ({currentMission.modelUsed || activeModel})
-                  </span>
-                )}
-                <span className="text-xs text-amber-400 font-bold">
-                  {currentMission.steps.length} Acciones Consecutivas
-                </span>
+              {/* Encabezado de la Misión */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`text-xs border px-2.5 py-0.5 rounded-md font-mono ${
+                      currentMission.isCleanupMission
+                        ? 'bg-teal-950 border-teal-500/60 text-teal-300 font-bold'
+                        : 'bg-slate-800 border-slate-700 text-slate-300'
+                    }`}>
+                      {currentMission.category}
+                    </span>
+                    {currentMission.isAI && (
+                      <span className="text-[11px] bg-purple-950/80 border border-purple-500/50 text-purple-300 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        Creada por IA ({currentMission.modelUsed || activeModel})
+                      </span>
+                    )}
+                    <span className="text-xs text-amber-400 font-bold">
+                      {currentMission.steps.length} Acciones Consecutivas
+                    </span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black text-white mt-1">
+                    {currentMission.title}
+                  </h2>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    onClick={() => generateNewAIMission(difficultySteps, selectedTheme)}
+                    disabled={isAnalyzingAI}
+                    title="Inventar otra misión distinta ahora"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-purple-300 text-xs font-bold transition-all disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzingAI ? 'animate-spin' : ''}`} />
+                    <span>Otra Prueba</span>
+                  </button>
+
+                  <button
+                    onClick={() => narrateMission()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-950 border border-cyan-700/60 hover:bg-cyan-900 text-cyan-300 text-xs font-black shadow-md transition-all"
+                  >
+                    <Volume2 className="w-4 h-4 text-cyan-400" />
+                    <span>Escuchar Instrucciones</span>
+                  </button>
+                </div>
               </div>
-              <h2 className="text-xl sm:text-2xl font-black text-white mt-1">
-                {currentMission.title}
-              </h2>
-            </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <button
-                onClick={() => generateNewAIMission(difficultySteps, selectedTheme)}
-                disabled={isAnalyzingAI}
-                title="Inventar otra misión distinta ahora"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-purple-300 text-xs font-bold transition-all disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzingAI ? 'animate-spin' : ''}`} />
-                <span>Otra Prueba</span>
-              </button>
-
-              <button
-                onClick={() => narrateMission()}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-950 border border-cyan-700/60 hover:bg-cyan-900 text-cyan-300 text-xs font-black shadow-md transition-all"
-              >
-                <Volume2 className="w-4 h-4 text-cyan-400" />
-                <span>Escuchar Instrucciones</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Lista de Pasos Encadenados */}
-          <div className="my-6 space-y-3">
-            {currentMission.steps.map((st, idx) => {
-              const isChecked = checkedSteps.includes(st.id);
-              return (
-                <div
-                  key={st.id}
-                  className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
-                    phase === 'action'
-                      ? 'bg-slate-800/70 border-slate-700 hover:border-slate-500'
-                      : 'bg-slate-900/60 border-slate-800'
-                  } ${isChecked ? 'bg-emerald-950/20 border-emerald-600/40 text-slate-300' : ''}`}
-                >
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-amber-400 flex items-center justify-center text-lg font-black shadow-sm shrink-0">
-                      {st.icon || idx + 1}
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold">
-                        Paso {idx + 1} de {currentMission.steps.length}
+              {/* Lista de Pasos Encadenados */}
+              <div className="my-6 space-y-3">
+                {currentMission.steps.map((st, idx) => {
+                  const isChecked = checkedSteps.includes(st.id);
+                  const isVoiceDetected = phase === 'repeat' && matchedStepIdsInRep.includes(st.id);
+                  return (
+                    <div
+                      key={st.id}
+                      className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
+                        isVoiceDetected
+                          ? 'bg-amber-950/40 border-amber-400 shadow-md shadow-amber-950/30'
+                          : phase === 'action'
+                          ? 'bg-slate-800/70 border-slate-700 hover:border-slate-500'
+                          : 'bg-slate-900/60 border-slate-800'
+                      } ${isChecked ? 'bg-emerald-950/20 border-emerald-600/40 text-slate-300' : ''}`}
+                    >
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-amber-400 flex items-center justify-center text-lg font-black shadow-sm shrink-0">
+                          {st.icon || idx + 1}
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold flex items-center gap-2">
+                            <span>Paso {idx + 1} de {currentMission.steps.length}</span>
+                            {isVoiceDetected && (
+                              <span className="text-[10px] bg-amber-400 text-slate-950 px-2 py-0.2 rounded-full font-black">
+                                🎙️ ¡Dicho en voz alta!
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-base font-bold text-white">
+                            {st.text}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-base font-bold text-white">
-                        {st.text}
-                      </div>
+
+                      {phase === 'action' && (
+                        <button
+                          onClick={() => {
+                            SpyAudio.playRadar();
+                            setCheckedSteps(prev => 
+                              prev.includes(st.id) ? prev.filter(i => i !== st.id) : [...prev, st.id]
+                            );
+                          }}
+                          className={`w-7 h-7 rounded-xl border flex items-center justify-center transition-all shrink-0 ${
+                            isChecked
+                              ? 'bg-emerald-500 border-emerald-400 text-slate-950'
+                              : 'border-slate-600 hover:border-slate-400 text-transparent'
+                          }`}
+                        >
+                          <Check className="w-4 h-4 stroke-[3]" />
+                        </button>
+                      )}
                     </div>
+                  );
+                })}
+              </div>
+
+              {/* ================= FASE 1: ESCUCHAR ================= */}
+              {phase === 'listen' && (
+                <div className="p-5 rounded-2xl bg-cyan-950/30 border border-cyan-800/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="text-left">
+                    <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
+                      <Eye className="w-4 h-4" />
+                      Paso 1: Memoriza la secuencia de {currentMission.steps.length} pasos
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Léele o haz clic en "Escuchar Instrucciones". Aún no debe pararse de su asiento.
+                    </p>
                   </div>
 
-                  {phase === 'action' && (
+                  <button
+                    onClick={() => {
+                      SpyAudio.playSuccess();
+                      setPhase('repeat');
+                      speakText(`¡Muy bien! Ahora activa el micrófono y repite los ${currentMission.steps.length} pasos en voz alta tres veces.`);
+                    }}
+                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2"
+                  >
+                    <span>¡Instrucciones Escuchadas!</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* ================= FASE 2: REPETIR EN VOZ ALTA CON RECONOCIMIENTO DE VOZ ================= */}
+              {phase === 'repeat' && (
+                <div className="p-5 rounded-2xl bg-amber-950/30 border-2 border-dashed border-amber-500/60 space-y-5 text-center">
+                  <div className="max-w-lg mx-auto space-y-1">
+                    <span className="text-3xl">🎙️🗣️</span>
+                    <h4 className="text-base sm:text-lg font-black text-amber-300">
+                      ¡Reconocimiento de Voz de Espía ({repeatTaps}/3 Repeticiones)!
+                    </h4>
+                    <p className="text-xs text-amber-200/80">
+                      Activa el micrófono y dile a la niña que repita los {currentMission.steps.length} pasos en voz alta. El radar detectará su voz automáticamente.
+                    </p>
+                  </div>
+
+                  {/* Controles de Micrófono en Vivo */}
+                  <div className="flex flex-col items-center gap-3">
                     <button
                       onClick={() => {
-                        SpyAudio.playRadar();
-                        setCheckedSteps(prev => 
-                          prev.includes(st.id) ? prev.filter(i => i !== st.id) : [...prev, st.id]
-                        );
+                        if (isListeningVoice) {
+                          stopVoiceRecognition();
+                        } else {
+                          startVoiceRecognition();
+                        }
                       }}
-                      className={`w-7 h-7 rounded-xl border flex items-center justify-center transition-all shrink-0 ${
-                        isChecked
-                          ? 'bg-emerald-500 border-emerald-400 text-slate-950'
-                          : 'border-slate-600 hover:border-slate-400 text-transparent'
+                      className={`px-6 py-3.5 rounded-2xl font-black text-sm shadow-xl flex items-center gap-3 transition-all ${
+                        isListeningVoice
+                          ? 'bg-red-500 hover:bg-red-400 text-white shadow-red-500/30 animate-pulse'
+                          : 'bg-gradient-to-r from-cyan-400 to-teal-400 hover:from-cyan-300 hover:to-teal-300 text-slate-950 shadow-cyan-500/20'
                       }`}
                     >
-                      <Check className="w-4 h-4 stroke-[3]" />
+                      {isListeningVoice ? (
+                        <>
+                          <Mic className="w-5 h-5 animate-bounce" />
+                          <span>Escuchando tu voz en vivo... (Clic para pausar)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Mic className="w-5 h-5" />
+                          <span>Activar Micrófono para Repetir Instrucciones</span>
+                        </>
+                      )}
                     </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
 
-          {/* ================= FASE 1: ESCUCHAR ================= */}
-          {phase === 'listen' && (
-            <div className="p-5 rounded-2xl bg-cyan-950/30 border border-cyan-800/40 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="text-left">
-                <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
-                  <Eye className="w-4 h-4" />
-                  Paso 1: Memoriza la secuencia de {currentMission.steps.length} pasos
-                </h4>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Léele o haz clic en "Escuchar Instrucciones". Aún no debe pararse de su asiento.
-                </p>
-              </div>
+                    {/* Transcripción en vivo de lo que dice la niña */}
+                    {(isListeningVoice || liveTranscript || voiceStatusMsg) && (
+                      <div className="w-full max-w-xl p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 text-left space-y-2">
+                        <div className="flex items-center justify-between text-[11px] font-mono text-cyan-400">
+                          <span>{voiceStatusMsg || "🎙️ Radar de voz activo"}</span>
+                          <span>Pasos detectados: {matchedStepIdsInRep.length}/{currentMission.steps.length}</span>
+                        </div>
+                        <div className="text-xs sm:text-sm text-slate-200 italic min-h-[1.5rem]">
+                          {liveTranscript ? `"${liveTranscript}"` : "Habla cerca del micrófono mencionando los pasos..."}
+                        </div>
+                      </div>
+                    )}
 
-              <button
-                onClick={() => {
-                  SpyAudio.playSuccess();
-                  setPhase('repeat');
-                  speakText(`¡Muy bien! Ahora repite los ${currentMission.steps.length} pasos en voz alta tres veces seguidas.`);
-                }}
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2"
-              >
-                <span>¡Instrucciones Escuchadas!</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
-          {/* ================= FASE 2: REPETIR EN VOZ ALTA ================= */}
-          {phase === 'repeat' && (
-            <div className="p-5 rounded-2xl bg-amber-950/30 border-2 border-dashed border-amber-600/50 space-y-4 text-center">
-              <div className="max-w-md mx-auto">
-                <span className="text-3xl">🗣️</span>
-                <h4 className="text-base font-black text-amber-300 mt-1">
-                  ¡Regla de Oro: Habla Interna Activada!
-                </h4>
-                <p className="text-xs text-amber-200/80 mt-1">
-                  Pídele que te repita los {currentMission.steps.length} pasos en orden. Repetirlo fija el circuito en su memoria antes de actuar.
-                </p>
-              </div>
-
-              <div className="flex flex-col items-center gap-3">
-                <button
-                  onClick={() => {
-                    const next = repeatTaps + 1;
-                    setRepeatTaps(next);
-                    SpyAudio.playBeep(440 + next * 120, 'sine', 0.15);
-                    if (next >= 3) {
-                      setTimeout(() => {
-                        setPhase('action');
-                        setIsTimerActive(true);
-                        SpyAudio.playSuccess();
-                        speakText("¡Cerebro activado! Tienes el tiempo en marcha para completar la misión en la casa.");
-                      }, 400);
-                    }
-                  }}
-                  className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/20 flex items-center gap-3"
-                >
-                  <Sparkles className="w-5 h-5" />
-                  <span>Repetido en voz alta ({repeatTaps}/3) veces</span>
-                </button>
-                <div className="text-[11px] text-slate-400">
-                  Haz clic cada vez que tu hija repita toda la secuencia con sus propias palabras.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ================= FASE 3: EJECUTAR EN EL MUNDO REAL ================= */}
-          {phase === 'action' && (
-            <div className="p-5 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-4">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-14 h-12 rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center font-mono font-black text-lg text-amber-400">
-                    {timerSeconds}s
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-white">
-                      ¡Misión de {currentMission.steps.length} Pasos en Curso!
-                    </h4>
-                    <p className="text-xs text-slate-400">
-                      Ella debe cumplir las acciones en la vida real. Marca los pasos arriba a medida que los haga.
-                    </p>
+                    {/* Botón manual de respaldo / confirmación rápida */}
+                    <div className="pt-1 flex flex-wrap items-center justify-center gap-3">
+                      <button
+                        onClick={() => registerCompletedRepetition('manual')}
+                        className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center gap-2 transition-all"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        <span>Sumar Repetición Manual ({repeatTaps}/3)</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
+              )}
 
-                <button
-                  onClick={() => {
-                    setIsTimerActive(false);
-                    setPhase('verify');
-                    SpyAudio.playRadar();
-                  }}
-                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
-                >
-                  <Camera className="w-4 h-4" />
-                  <span>¡Ya lo hizo! Validar Prueba</span>
-                </button>
-              </div>
-            </div>
-          )}
+              {/* ================= FASE 3: EJECUTAR EN EL MUNDO REAL ================= */}
+              {phase === 'action' && (
+                <div className="p-5 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-4">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-14 h-12 rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center font-mono font-black text-lg text-amber-400">
+                        {timerSeconds}s
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-white">
+                          ¡Misión de {currentMission.steps.length} Pasos en Curso!
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          Ella debe cumplir las acciones en la vida real. Marca los pasos arriba a medida que los haga.
+                        </p>
+                      </div>
+                    </div>
 
-          {/* ================= FASE 4: VALIDACIÓN CON CÁMARA E IA ================= */}
-          {phase === 'verify' && (
-            <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-5">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-sm font-black text-cyan-300 flex items-center gap-2">
-                    <Camera className="w-4 h-4" />
-                    Escaneo de Prueba con Inteligencia Artificial
-                  </h4>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Muestra a la cámara: <strong className="text-amber-300">{currentMission.targetItem}</strong>
-                  </p>
-                </div>
-
-                {/* Salida manual para padres */}
-                <button
-                  onClick={() => handleMissionVictory("¡Validado directamente por el oficial superior en casa!")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-300 transition-colors"
-                >
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Validar por Papá/Mamá</span>
-                </button>
-              </div>
-
-              {/* Visor de Webcam */}
-              <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-800 aspect-video max-w-md mx-auto flex items-center justify-center">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={`w-full h-full object-cover ${cameraActive ? 'block' : 'hidden'}`}
-                />
-                <canvas ref={canvasRef} className="hidden" />
-
-                {!cameraActive && (
-                  <div className="text-center p-6 space-y-3">
-                    <Video className="w-10 h-10 text-slate-600 mx-auto" />
-                    <p className="text-xs text-slate-400">
-                      Cámara desactivada o sin permisos concedidos.
-                    </p>
                     <button
-                      onClick={startCamera}
-                      className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs"
+                      onClick={() => {
+                        setIsTimerActive(false);
+                        setPhase('verify');
+                        SpyAudio.playRadar();
+                      }}
+                      className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
                     >
-                      Activar Cámara
+                      <Camera className="w-4 h-4" />
+                      <span>¡Ya lo hizo! Validar Prueba</span>
                     </button>
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Cuadrícula de Escáner Espía */}
-                {cameraActive && (
-                  <div className="absolute inset-0 pointer-events-none border-2 border-cyan-500/40 rounded-2xl flex flex-col justify-between p-3">
-                    <div className="flex justify-between items-center text-[10px] font-mono text-cyan-400 bg-black/60 px-2 py-0.5 rounded">
-                      <span>RADAR_ESPÍA: {apiKey ? activeModel.toUpperCase() : 'MODO_LOCAL'}</span>
-                      <span className="animate-pulse">● REC</span>
+              {/* ================= FASE 4: VALIDACIÓN CON CÁMARA E IA ================= */}
+              {phase === 'verify' && (
+                <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-5">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-black text-cyan-300 flex items-center gap-2">
+                        <Camera className="w-4 h-4" />
+                        Escaneo de Prueba con Inteligencia Artificial
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Muestra a la cámara: <strong className="text-amber-300">{currentMission.targetItem}</strong>
+                      </p>
                     </div>
-                    <div className="w-16 h-16 border-2 border-dashed border-cyan-400/70 rounded-xl mx-auto opacity-75"></div>
-                    <div className="text-center text-[11px] text-cyan-300 font-mono bg-black/60 py-1 rounded">
-                      Centra aquí el objeto o la torre armada
-                    </div>
-                  </div>
-                )}
-              </div>
 
-              {/* Botón de Captura y Envío a Gemini */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button
-                  onClick={analyzeProofWithGemini}
-                  disabled={isAnalyzingAI}
-                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-sm shadow-xl shadow-cyan-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <Sparkles className={`w-4 h-4 ${isAnalyzingAI ? 'animate-spin' : ''}`} />
-                  <span>{isAnalyzingAI ? 'Analizando con Visión IA...' : '¡Escanear Prueba Ahora!'}</span>
-                </button>
-              </div>
-
-              {/* Feedback devuelto por la IA */}
-              {aiFeedback && (
-                <div className={`p-4 rounded-xl border text-left text-xs ${
-                  aiFeedback.cumplido 
-                    ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200' 
-                    : 'bg-rose-950/40 border-rose-500/50 text-rose-200'
-                }`}>
-                  <div className="font-bold flex items-center gap-2">
-                    {aiFeedback.cumplido ? '✅ Cuartel General Confirma:' : '⚠️ Ajuste Necesario:'}
+                    {/* Salida manual para padres */}
+                    <button
+                      onClick={() => handleMissionVictory("¡Validado directamente por el oficial superior en casa!")}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-300 transition-colors"
+                    >
+                      <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Validar por Papá/Mamá</span>
+                    </button>
                   </div>
-                  <div className="mt-1 text-sm font-semibold">{aiFeedback.mensaje_divertido}</div>
-                  {aiFeedback.detalles_observados && (
-                    <div className="text-[11px] opacity-75 mt-1 font-mono">
-                      Detalle visual: {aiFeedback.detalles_observados}
+
+                  {/* Visor de Webcam */}
+                  <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-800 aspect-video max-w-md mx-auto flex items-center justify-center">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={`w-full h-full object-cover ${cameraActive ? 'block' : 'hidden'}`}
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+
+                    {!cameraActive && (
+                      <div className="text-center p-6 space-y-3">
+                        <Video className="w-10 h-10 text-slate-600 mx-auto" />
+                        <p className="text-xs text-slate-400">
+                          Cámara desactivada o sin permisos concedidos.
+                        </p>
+                        <button
+                          onClick={startCamera}
+                          className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs"
+                        >
+                          Activar Cámara
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Cuadrícula de Escáner Espía */}
+                    {cameraActive && (
+                      <div className="absolute inset-0 pointer-events-none border-2 border-cyan-500/40 rounded-2xl flex flex-col justify-between p-3">
+                        <div className="flex justify-between items-center text-[10px] font-mono text-cyan-400 bg-black/60 px-2 py-0.5 rounded">
+                          <span>RADAR_ESPÍA: {apiKey ? activeModel.toUpperCase() : 'MODO_LOCAL'}</span>
+                          <span className="animate-pulse">● REC</span>
+                        </div>
+                        <div className="w-16 h-16 border-2 border-dashed border-cyan-400/70 rounded-xl mx-auto opacity-75"></div>
+                        <div className="text-center text-[11px] text-cyan-300 font-mono bg-black/60 py-1 rounded">
+                          Centra aquí el objeto o señal solicitada
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Botón de Captura y Envío a Gemini */}
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <button
+                      onClick={analyzeProofWithGemini}
+                      disabled={isAnalyzingAI}
+                      className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-sm shadow-xl shadow-cyan-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <Sparkles className={`w-4 h-4 ${isAnalyzingAI ? 'animate-spin' : ''}`} />
+                      <span>{isAnalyzingAI ? 'Analizando con Visión IA...' : '¡Escanear Prueba Ahora!'}</span>
+                    </button>
+                  </div>
+
+                  {/* Feedback devuelto por la IA */}
+                  {aiFeedback && (
+                    <div className={`p-4 rounded-xl border text-left text-xs ${
+                      aiFeedback.cumplido 
+                        ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200' 
+                        : 'bg-rose-950/40 border-rose-500/50 text-rose-200'
+                    }`}>
+                      <div className="font-bold flex items-center gap-2">
+                        {aiFeedback.cumplido ? '✅ Cuartel General Confirma:' : '⚠️ Ajuste Necesario:'}
+                      </div>
+                      <div className="mt-1 text-sm font-semibold">{aiFeedback.mensaje_divertido}</div>
+                      {aiFeedback.detalles_observados && (
+                        <div className="text-[11px] opacity-75 mt-1 font-mono">
+                          Detalle visual: {aiFeedback.detalles_observados}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ================= FASE 5: VICTORIA / MISIÓN LOGRADA ================= */}
-          {phase === 'success' && (
-            <div className="p-8 rounded-3xl bg-gradient-to-b from-emerald-950/60 to-slate-900 border-2 border-emerald-500 text-center space-y-4">
-              <div className="text-6xl animate-bounce">🏆</div>
-              <h3 className="text-2xl sm:text-3xl font-black text-emerald-300">
-                ¡MISIÓN DE {currentMission.steps.length} PASOS CUMPLIDA!
-              </h3>
-              <p className="text-sm text-slate-300 max-w-md mx-auto">
-                Tu hija escuchó, retuvo en memoria motora y ejecutó las {currentMission.steps.length} instrucciones en el espacio físico.
-              </p>
+              {/* ================= FASE 5: VICTORIA / MISIÓN LOGRADA ================= */}
+              {phase === 'success' && (
+                <div className="p-8 rounded-3xl bg-gradient-to-b from-emerald-950/60 to-slate-900 border-2 border-emerald-500 text-center space-y-4">
+                  <div className="text-6xl animate-bounce">
+                    {currentMission.isCleanupMission ? '🧹✨' : '🏆'}
+                  </div>
+                  <h3 className="text-2xl sm:text-3xl font-black text-emerald-300">
+                    {currentMission.isCleanupMission
+                      ? '¡CUARTEL ORDENADO E IMPECABLE!'
+                      : `¡MISIÓN DE ${currentMission.steps.length} PASOS CUMPLIDA!`}
+                  </h3>
+                  <p className="text-sm text-slate-300 max-w-md mx-auto">
+                    {currentMission.isCleanupMission
+                      ? '¡Todos los objetos de las actividades anteriores fueron devueltos a su lugar con éxito!'
+                      : `Tu hija escuchó, repitió en voz alta y ejecutó las ${currentMission.steps.length} instrucciones en el espacio físico.`}
+                  </p>
 
-              <div className="inline-flex items-center gap-2 bg-emerald-900/60 border border-emerald-600/60 px-4 py-2 rounded-xl text-emerald-300 font-bold text-sm">
-                <Flame className="w-4 h-4 text-amber-400" />
-                <span>+{currentMission.steps.length * 30} Puntos de Memoria Ganados</span>
-              </div>
+                  <div className="inline-flex items-center gap-2 bg-emerald-900/60 border border-emerald-600/60 px-4 py-2 rounded-xl text-emerald-300 font-bold text-sm">
+                    <Flame className="w-4 h-4 text-amber-400" />
+                    <span>
+                      +{currentMission.steps.length * 30 + (currentMission.isCleanupMission ? 60 : 0)} Puntos de Memoria Ganados
+                    </span>
+                  </div>
 
-              <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
-                <button
-                  onClick={() => generateNewAIMission(difficultySteps, selectedTheme)}
-                  disabled={isAnalyzingAI}
-                  className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/20 flex items-center gap-2 disabled:opacity-50"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Siguiente Misión Nueva con IA ({difficultySteps} Pasos) ➔</span>
-                </button>
+                  {/* Aviso si ya toca la misión de recoger objetos */}
+                  {isCleanupNext && (
+                    <div className="max-w-md mx-auto p-3 rounded-2xl bg-teal-950/80 border border-teal-400/60 text-teal-200 text-xs font-bold">
+                      🧹 ¡Ya acumulaste {usedObjects.length} objetos en campo! La siguiente misión será una Operación Especial para guardarlos en su sitio.
+                    </div>
+                  )}
 
-                <button
-                  onClick={() => selectStepDifficulty(Math.min(10, difficultySteps + 1))}
-                  disabled={isAnalyzingAI}
-                  className="px-6 py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-sm shadow-xl shadow-purple-900/30 flex items-center gap-2 disabled:opacity-50"
-                >
-                  <span>Subir Nivel a {Math.min(10, difficultySteps + 1)} Pasos 🚀</span>
-                </button>
-              </div>
-            </div>
-          )}
+                  <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                    <button
+                      onClick={() => handleNextMission(difficultySteps, selectedTheme)}
+                      disabled={isAnalyzingAI}
+                      className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/20 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>
+                        {isCleanupNext
+                          ? `🧹 Iniciar Misión de Recoger Objetos (${usedObjects.length}) ➔`
+                          : `Siguiente Misión Nueva con IA (${difficultySteps} Pasos) ➔`}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => selectStepDifficulty(Math.min(10, difficultySteps + 1))}
+                      disabled={isAnalyzingAI}
+                      className="px-6 py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-sm shadow-xl shadow-purple-900/30 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <span>Subir Nivel a {Math.min(10, difficultySteps + 1)} Pasos 🚀</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -1277,7 +1750,7 @@ ${stepsTemplateExample}
             <span>Por qué funciona este método en la vida real:</span>
           </div>
           <p>
-            Al forzar a la niña a <strong>repetir la orden en voz alta antes de moverse</strong>, transformamos una orden externa en <em>habla subvocal autodirigida</em>. Esto activa los lóbulos frontales y evita que olvide los pasos intermedios mientras camina por la casa.
+            Al forzar a la niña a <strong>repetir la orden en voz alta en el micrófono antes de moverse</strong>, transformamos una instrucción externa en <em>habla subvocal autodirigida</em>. Además, las misiones periódicas de recolección cierran el ciclo ejecutivo enseñándole a dejar su espacio en orden.
           </p>
         </footer>
 
