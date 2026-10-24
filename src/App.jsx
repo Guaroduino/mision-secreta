@@ -198,6 +198,7 @@ export default function App() {
   // Cámara e IA Gemini
   const [cameraActive, setCameraActive] = useState(false);
   const [isAnalyzingAI, setIsAnalyzingAI] = useState(false);
+  const [isGeneratingMission, setIsGeneratingMission] = useState(false);
   const [aiFeedback, setAiFeedback] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
 
@@ -545,6 +546,7 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
       handleMissionVictory(fallbackResult.mensaje_divertido);
     } finally {
       setIsAnalyzingAI(false);
+      setIsGeneratingMission(false);
     }
   };
 
@@ -578,6 +580,8 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
     }
 
     setIsAnalyzingAI(true);
+    setIsGeneratingMission(true);
+    setPhase('listen');
     setAiErrorMsg(null);
     SpyAudio.playRadar();
 
@@ -675,6 +679,7 @@ ${stepsTemplateExample}
       resetMissionFlow(procMission.steps.length);
     } finally {
       setIsAnalyzingAI(false);
+      setIsGeneratingMission(false);
     }
   };
 
@@ -913,19 +918,27 @@ ${stepsTemplateExample}
         {/* ================= TARJETA PRINCIPAL DE MISIÓN ================= */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-8 shadow-2xl relative overflow-hidden">
           
-          {/* Overlay de carga cuando la IA está inventando la siguiente misión */}
-          {isAnalyzingAI && phase !== 'verify' && (
-            <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3 p-6 text-center">
-              <Sparkles className="w-10 h-10 text-purple-400 animate-spin" />
-              <div className="text-base font-black text-white">
-                El Cuartel IA está inventando una misión nueva de {difficultySteps} pasos...
+          {/* Pantalla dedicada de carga mientras Gemini IA inventa la misión */}
+          {isGeneratingMission ? (
+            <div className="py-16 px-6 flex flex-col items-center justify-center text-center space-y-5 animate-pulse">
+              <div className="relative flex items-center justify-center">
+                <div className="w-20 h-20 rounded-full border-4 border-purple-500/30 border-t-purple-400 animate-spin" />
+                <Sparkles className="w-8 h-8 text-amber-400 absolute animate-bounce" />
               </div>
-              <div className="text-xs text-slate-400">
-                Verificando que no se repita ninguna prueba anterior
+              <div className="space-y-2 max-w-md">
+                <span className="text-[11px] font-mono uppercase tracking-widest bg-purple-950/90 border border-purple-500/50 text-purple-300 px-3 py-1 rounded-full font-bold">
+                   transmisor gemini ia activo
+                </span>
+                <h3 className="text-xl sm:text-2xl font-black text-white pt-1">
+                  Inventando nueva misión secreta de {difficultySteps} pasos...
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-400">
+                  El Cuartel General está diseñando instrucciones físicas nuevas que no se hayan repetido antes.
+                </p>
               </div>
             </div>
-          )}
-
+          ) : (
+            <>
           {/* Encabezado de la Misión */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
             <div>
@@ -1251,6 +1264,8 @@ ${stepsTemplateExample}
                 </button>
               </div>
             </div>
+          )}
+            </>
           )}
 
         </div>
