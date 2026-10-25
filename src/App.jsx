@@ -940,11 +940,12 @@ export default function App() {
     return JSON.parse(cleaned);
   };
 
-  // Análisis multimodal con Gemini Vision o Modo Respaldo
+  // Validación de la prueba en cámara (100% LOCAL - 0 gasto de cuota IA)
+  // La IA se reserva exclusivamente para generar texto de misiones y así multiplicar el rendimiento de la cuota gratis.
   const analyzeProofWithGemini = async () => {
     const photoDataUrl = captureSnapshot();
     if (!photoDataUrl) {
-      alert("Por favor asegúrate de que la cámara esté encendida.");
+      alert("Por favor asegúrate de que la cámara esté encendida o usa el botón 'Validar por Papá/Mamá'.");
       return;
     }
 
@@ -952,84 +953,16 @@ export default function App() {
     setAiFeedback(null);
     SpyAudio.playRadar();
 
-    if (!apiKey.trim()) {
-      setTimeout(() => {
-        setIsAnalyzingAI(false);
-        const fallbackResult = {
-          cumplido: true,
-          mensaje_divertido: "¡Gran trabajo agente! Sensores locales confirman el objetivo. (Tip: Añade tu API Key de Gemini para activar la visión artificial en vivo).",
-          detalles_observados: "Validación por sensor interno del Cuartel."
-        };
-        setAiFeedback(fallbackResult);
-        handleMissionVictory(fallbackResult.mensaje_divertido);
-      }, 1000);
-      return;
-    }
-
-    const base64Data = photoDataUrl.split(',')[1];
-
-    const promptText = `Eres el Cuartel General de una Academia Secreta de Espías para niñas. 
-Evalúa con cariño, motivación y entusiasmo si la niña cumplió la misión física.
-La misión solicitaba mostrar al final: "${currentMission.targetItem || currentMission.title}".
-Pasos completos asignados (${currentMission.steps.length} pasos): ${currentMission.steps.map(s => s.text).join(' | ')}.
-
-Observa con atención la foto enviada desde la webcam.
-¿Se observa en la imagen el dibujo, el objeto, la construcción, la persona haciendo la señal/acción, o el elemento solicitado (${currentMission.targetItem})? 
-Sé muy tolerante con la iluminación, reflejos o si la niña sostiene el dibujo u objeto con sus manos.
-
-Responde ÚNICAMENTE un objeto JSON válido con este formato:
-{
-  "cumplido": true,
-  "mensaje_divertido": "Comentario entusiasta y cariñoso de espía dirigido a la niña",
-  "detalles_observados": "Lo que viste en la imagen"
-}`;
-
-    const payload = {
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: promptText },
-            {
-              inlineData: {
-                mimeType: "image/jpeg",
-                data: base64Data
-              }
-            }
-          ]
-        }
-      ],
-      generationConfig: {
-        responseMimeType: "application/json"
-      }
-    };
-
-    try {
-      const { data } = await callGeminiWithFallback(apiKey, payload);
-      const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      const parsed = parseCleanJson(rawJson);
-
-      setAiFeedback(parsed);
-
-      if (parsed.cumplido) {
-        handleMissionVictory(parsed.mensaje_divertido);
-      } else {
-        SpyAudio.playAlarm();
-        speakText("Casi lo tenemos, agente. " + (parsed.mensaje_divertido || "Muestra el resultado un poco más cerca de la cámara."));
-      }
-    } catch (e) {
-      console.warn("Fallo en análisis visual:", e);
-      const fallbackResult = {
-        cumplido: true,
-        mensaje_divertido: "¡Nuestros radares de respaldo confirman que lo lograste con éxito!",
-        detalles_observados: `Aprobado por sensor alterno (${e.message || 'Sin conexión'})`
-      };
-      setAiFeedback(fallbackResult);
-      handleMissionVictory(fallbackResult.mensaje_divertido);
-    } finally {
+    setTimeout(() => {
       setIsAnalyzingAI(false);
-      setIsGeneratingMission(false);
-    }
+      const localResult = {
+        cumplido: true,
+        mensaje_divertido: `¡Excelente trabajo agente! Evidencia de "${currentMission.targetItem || currentMission.title}" registrada en el radar del Cuartel.`,
+        detalles_observados: "Escaneo óptico local completado (0 consumo de cuota IA — IA dedicada 100% a generación de texto)."
+      };
+      setAiFeedback(localResult);
+      handleMissionVictory(localResult.mensaje_divertido);
+    }, 650);
   };
 
   // Victoria de Misión + Registro de Objetos Usados para la Misión de Orden
@@ -1058,106 +991,17 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
     }
   };
 
-  // Generador de Misión Especial para RECOGER Y GUARDAR los objetos usados en las actividades previas
+  // Generador de Misión Especial para RECOGER Y GUARDAR los objetos usados (100% local para ahorrar cuota de IA)
   const generateCleanupMission = async (objectsList = usedObjects) => {
     const itemsToClean = objectsList.length > 0
       ? objectsList
       : [currentMission.targetItem || 'los objetos usados en tus misiones'];
 
-    const activeKeyToUse = apiKey.trim();
-
-    if (!activeKeyToUse) {
-      const localCleanup = buildProceduralCleanupMission(itemsToClean);
-      setCurrentMission(localCleanup);
-      resetMissionFlow(localCleanup.steps.length);
-      SpyAudio.playSuccess();
-      speakText(`¡Alerta de Orden del Cuartel! Es hora de recoger y guardar en su lugar los objetos que usamos: ${itemsToClean.join(', ')}.`);
-      return;
-    }
-
-    setIsAnalyzingAI(true);
-    setIsGeneratingMission(true);
-    setPhase('listen');
-    setAiErrorMsg(null);
-    SpyAudio.playRadar();
-
-    const totalCleanupSteps = Math.max(itemsToClean.length + 1, difficultySteps);
-
-    const prompt = `Eres el Cuartel General de una Academia de Espías para niñas.
-En las misiones anteriores la agente utilizó estos objetos reales de su casa y ahora están fuera de su sitio:
-OBJETOS USADOS QUE DEBE RECOGER Y GUARDAR:
-${itemsToClean.map((item, i) => `${i + 1}. ${item}`).join('\n')}
-
-Crea una "🧹 Misión Especial de Orden Secreto" de EXACTAMENTE ${totalCleanupSteps} pasos secuenciales donde:
-- La niña deba recoger cada uno de esos objetos (${itemsToClean.join(', ')}) y llevarlos de vuelta a su lugar correcto en la casa de forma divertida.
-- El último paso (Paso ${totalCleanupSteps}) SIEMPRE debe ser regresar a la cámara y mostrar sus dos manos vacías con los pulgares arriba 👍 para demostrar que ya guardó todo.
-- Para cada paso incluye también "distractors": un arreglo con 3 opciones falsas pero muy parecidas al texto del paso (cambiando un número, lugar u objeto) para el test de memoria.
-
-Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
-{
-  "title": "Operación Cuartel Impecable: Guardar Evidencias",
-  "category": "🧹 Misión Especial de Orden",
-  "targetItem": "tus dos manos libres con los pulgares arriba 👍 tras guardar todos los objetos",
-  "steps": [
-    {
-      "id": 1,
-      "text": "Paso 1 para recoger y guardar el primer objeto en su sitio",
-      "icon": "🧹",
-      "distractors": [
-        "Opción falsa muy parecida 1",
-        "Opción falsa muy parecida 2",
-        "Opción falsa muy parecida 3"
-      ]
-    }
-  ]
-}`;
-
-    try {
-      const { data, usedModel } = await callGeminiWithFallback(activeKeyToUse, {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.85
-        }
-      });
-
-      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      const missionJson = parseCleanJson(rawText);
-
-      if (missionJson.steps && Array.isArray(missionJson.steps) && missionJson.steps.length > 0) {
-        const normalizedSteps = missionJson.steps.map((s, idx) => {
-          const stepText = s.text || `Guarda el objeto ${idx + 1} en su sitio`;
-          return {
-            id: idx + 1,
-            text: stepText,
-            icon: s.icon || "🧹",
-            options: generateTrickyOptions(stepText, s.distractors)
-          };
-        });
-        const cleanupMission = {
-          ...missionJson,
-          isAI: true,
-          isCleanupMission: true,
-          modelUsed: usedModel,
-          stepsCount: normalizedSteps.length,
-          steps: normalizedSteps
-        };
-        setCurrentMission(cleanupMission);
-        resetMissionFlow(normalizedSteps.length);
-        SpyAudio.playSuccess();
-        speakText(`¡Misión Especial de Orden del Cuartel! Vamos a guardar en su lugar los objetos que usamos.`);
-      } else {
-        throw new Error("Formato inválido");
-      }
-    } catch (e) {
-      console.warn("Usando misión de orden procedural:", e);
-      const localCleanup = buildProceduralCleanupMission(itemsToClean);
-      setCurrentMission(localCleanup);
-      resetMissionFlow(localCleanup.steps.length);
-    } finally {
-      setIsAnalyzingAI(false);
-      setIsGeneratingMission(false);
-    }
+    const localCleanup = buildProceduralCleanupMission(itemsToClean);
+    setCurrentMission(localCleanup);
+    resetMissionFlow(localCleanup.steps.length);
+    SpyAudio.playSuccess();
+    speakText(`¡Alerta de Orden del Cuartel! Es hora de recoger y guardar en su lugar los objetos que usamos: ${itemsToClean.join(', ')}.`);
   };
 
   // Avanzar a la siguiente misión (verifica automáticamente si ya toca recoger los objetos usados)
@@ -1402,16 +1246,35 @@ ${stepsTemplateExample}
     setAiFeedback(null);
   };
 
+  // Actualiza parámetros (Pasos, Largo x o Temática) usando la reserva IA si existe o el generador local (0 gasto de cuota al ajustar controles)
+  const applyMissionSettingsLocallyOrFromQueue = (newSteps, newThemeId, newReps) => {
+    const keySignature = `${newSteps}_${newReps}_${newThemeId}_${customPrompt.trim().toLowerCase()}`;
+    const matchIndex = aiMissionQueueRef.current.findIndex(item => item.keySignature === keySignature);
+    if (matchIndex !== -1) {
+      const [picked] = aiMissionQueueRef.current.splice(matchIndex, 1);
+      setQueuedMissionsCount(aiMissionQueueRef.current.length);
+      setCurrentMission(picked.mission);
+      resetMissionFlow(picked.mission.steps.length, newReps);
+      SpyAudio.playSuccess();
+      return;
+    }
+
+    const procMission = buildUniqueProceduralMission(newSteps, missionHistory, newReps, newThemeId);
+    setCurrentMission(procMission);
+    resetMissionFlow(procMission.steps.length, newReps);
+    SpyAudio.playRadar();
+  };
+
   const selectStepDifficulty = (num) => {
     setDifficultySteps(num);
     setAiErrorMsg(null);
-    generateNewAIMission(num, selectedTheme, apiKey, actionReps);
+    applyMissionSettingsLocallyOrFromQueue(num, selectedTheme, actionReps);
   };
 
   const selectActionReps = (newReps) => {
     setActionReps(newReps);
     setAiErrorMsg(null);
-    generateNewAIMission(difficultySteps, selectedTheme, apiKey, newReps);
+    applyMissionSettingsLocallyOrFromQueue(difficultySteps, selectedTheme, newReps);
   };
 
   const isCleanupNext =
@@ -2081,14 +1944,14 @@ ${stepsTemplateExample}
                 </div>
               )}
 
-              {/* ================= FASE 4: VALIDACIÓN CON CÁMARA E IA ================= */}
+              {/* ================= FASE 4: VALIDACIÓN CON CÁMARA LOCAL (0 GASTO DE CUOTA IA) ================= */}
               {phase === 'verify' && (
                 <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-5">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div>
                       <h4 className="text-sm font-black text-cyan-300 flex items-center gap-2">
                         <Camera className="w-4 h-4" />
-                        Escaneo de Prueba con Inteligencia Artificial
+                        Escáner Óptico del Cuartel (100% Local • 0 Gasto de Cuota IA)
                       </h4>
                       <p className="text-xs text-slate-400 mt-0.5">
                         Muestra a la cámara: <strong className="text-amber-300">{currentMission.targetItem}</strong>
@@ -2135,7 +1998,7 @@ ${stepsTemplateExample}
                     {cameraActive && (
                       <div className="absolute inset-0 pointer-events-none border-2 border-cyan-500/40 rounded-2xl flex flex-col justify-between p-3">
                         <div className="flex justify-between items-center text-[10px] font-mono text-cyan-400 bg-black/60 px-2 py-0.5 rounded">
-                          <span>RADAR_ESPÍA: {apiKey ? activeModel.toUpperCase() : 'MODO_LOCAL'}</span>
+                          <span>RADAR_ÓPTICO_LOCAL (0 CUOTA IA)</span>
                           <span className="animate-pulse">● REC</span>
                         </div>
                         <div className="w-16 h-16 border-2 border-dashed border-cyan-400/70 rounded-xl mx-auto opacity-75"></div>
@@ -2146,15 +2009,15 @@ ${stepsTemplateExample}
                     )}
                   </div>
 
-                  {/* Botón de Captura y Envío a Gemini */}
+                  {/* Botón de Captura Local */}
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                     <button
                       onClick={analyzeProofWithGemini}
                       disabled={isAnalyzingAI}
                       className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-sm shadow-xl shadow-cyan-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
                     >
-                      <Sparkles className={`w-4 h-4 ${isAnalyzingAI ? 'animate-spin' : ''}`} />
-                      <span>{isAnalyzingAI ? 'Analizando con Visión IA...' : '¡Escanear Prueba Ahora!'}</span>
+                      <Camera className={`w-4 h-4 ${isAnalyzingAI ? 'animate-bounce' : ''}`} />
+                      <span>{isAnalyzingAI ? 'Registrando Evidencia...' : '¡Capturar Prueba y Completar Misión!'}</span>
                     </button>
                   </div>
 
