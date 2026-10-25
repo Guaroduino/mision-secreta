@@ -4,7 +4,7 @@ import {
   Trophy, ShieldAlert, Award, Play, Eye, Flame, AlertCircle, 
   VolumeX, ArrowRight, UserCheck, RefreshCw, Zap, Check, Lock, Video,
   Key, Settings, ExternalLink, Trash2, CheckCircle, ShieldCheck, X,
-  Plus, Wand2, Sliders, Mic, MicOff
+  Plus, Wand2, Sliders, HelpCircle
 } from 'lucide-react';
 
 // Generador de efectos de audio con Web Audio API (cero dependencias externas)
@@ -55,74 +55,38 @@ class SpyAudio {
   }
 }
 
-// Temáticas rápidas para que la IA genere instrucciones variadas
+// Temáticas con reglas estrictas para que TODOS los pasos y el objetivo obedezcan la temática elegida
 const AI_THEMES = [
-  { id: 'sorpresa', label: '🎲 Sorpresa Espía', prompt: 'Combina movimientos divertidos y variados con buscar objetos cotidianos seguros de la casa.' },
-  { id: 'lego', label: '🧱 LEGO y Bloques', prompt: 'Usa piezas de LEGO, bloques de construcción o torres de colores combinadas con desafíos de movimiento físico.' },
-  { id: 'ninja', label: '🥷 Agente Ninja', prompt: 'Incluye poses de equilibrio, saltos ninja, caminar sin hacer ruido, tocar paredes o puertas y traer un objeto secreto.' },
-  { id: 'colores', label: '🎨 Cazadora de Colores', prompt: 'Sigue una secuencia buscando o tocando objetos de colores específicos en la habitación y trayendo el último a la cámara.' },
-  { id: 'peluches', label: '🧸 Peluches y Juguetes', prompt: 'Misión de rescate de juguetes, muñecos o peluches con pasos físicos intermedios divertidos.' },
-  { id: 'dibujo', label: '✏️ Papel y Lápiz', prompt: 'Incluye buscar útiles escolares (lápiz, marcador, cuaderno o libro) o dibujar una figura rápida para mostrar a la cámara.' }
-];
-
-// Semillas creativas para garantizar que la IA SIEMPRE invente misiones completamente distintas
-const CREATIVE_SCENARIOS = [
-  "Operación de sigilo en gravedad cero como astronauta",
-  "Entrenamiento de agilidad felina y rescate de artefacto doméstico",
-  "Código secreto de bailarina ninja y búsqueda del tesoro por colores",
-  "Misión submarina imaginaria esquivando láseres invisibles en el cuarto",
-  "Desafío de equilibrio real y recolección de suministros de expedición",
-  "Rastreo de detective con pistas táctiles en muebles seguros de la habitación",
-  "Operación relámpago de coordinación motora y objetos suaves",
-  "Misión de camuflaje ártico con pasos de animales divertidos",
-  "Protocolo de supervelocidad controlada y construcción o emparejamiento de objetos",
-  "Aventura en la jungla secreta saltando charcos imaginarios y rescatando un objeto",
-  "Sincronización cerebral de espía maestro con toques rítmicos y palmas",
-  "Infiltración silenciosa en cámara lenta y hallazgo de objeto brillante o colorido"
-];
-
-// Generador de acciones físicas dinámicas escaladas según la cantidad de repeticiones/intensidad por paso
-function getScaledProceduralActions(reps = 3) {
-  const r = Math.max(2, Number(reps) || 3);
-  const half = Math.max(2, Math.round(r * 0.7));
-  const secs = Math.max(4, r + 2);
-  return [
-    { text: `Camina como pingüino ${r} pasos seguidos hasta la puerta de la habitación`, icon: "🐧" },
-    { text: `Da ${r} saltos altos abriendo los brazos como estrella`, icon: "⭐" },
-    { text: `Toca el suelo con ambas manos y levántate de un salto ${half} veces`, icon: "🐸" },
-    { text: `Gira ${half} vueltas sobre tus pies con cuidado como un trompo`, icon: "🌀" },
-    { text: `Camina en puntillas sin hacer ni un ruido durante ${r + 3} pasos`, icon: "🤫" },
-    { text: `Haz equilibrio en un solo pie mientras cuentas en voz alta hasta ${secs}`, icon: "🦩" },
-    { text: `Toca una silla con los codos y da ${r} palmadas rápidas`, icon: "🪑" },
-    { text: `Aplaude ${r} veces por encima de tu cabeza y ${half} veces abajo`, icon: "👏" },
-    { text: `Camina hacia atrás ${r} pasos como un cangrejo espía`, icon: "🦀" },
-    { text: `Haz una pose de estatua de superhéroe sin moverte durante ${secs} segundos`, icon: "🦸‍♀️" },
-    { text: `Toca el marco de la puerta ${r} veces alternando mano derecha e izquierda`, icon: "🚪" },
-    { text: `Camina como un robot mecánico dando ${r} pasos por el cuarto`, icon: "🤖" },
-    { text: `Cruza los brazos sobre el pecho como momia y da ${r} saltitos`, icon: "🙅‍♀️" },
-    { text: `Tócate las rodillas, los hombros y la cabeza repitiendo la secuencia ${half} veces`, icon: "🙆‍♀️" },
-    { text: `Da ${r} pasos gigantes de dinosaurio por la habitación`, icon: "🦖" },
-    { text: `Haz como si nadaras en el aire mientras marchas en tu sitio contando hasta ${r}`, icon: "🏊‍♀️" },
-    { text: `Toca dos paredes distintas de la habitación y da ${r} saltos en el centro`, icon: "👉" },
-    { text: `Salta hacia adelante y hacia atrás como un canguro ${r} veces seguidas`, icon: "🦘" },
-    { text: `Camina en cámara lenta como astronauta en la Luna contando hasta ${secs}`, icon: "👩‍🚀" },
-    { text: `Haz ${r} sentadillas de agente élite y saluda como comandante`, icon: "🫡" }
-  ];
-}
-
-const PROCEDURAL_TARGETS = [
-  { item: "un lápiz, color o marcador", stepText: "Busca un lápiz, color o marcador y muéstralo frente a la cámara", icon: "✏️" },
-  { item: "un peluche o muñeco pequeño", stepText: "Rescata un peluche o juguete pequeño y tráelo a la cámara", icon: "🧸" },
-  { item: "un libro o cuaderno", stepText: "Busca un libro, cuento o cuaderno y muéstralo en la cámara", icon: "📚" },
-  { item: "una prenda de ropa o tela de color azul", stepText: "Encuentra una prenda o tela azul y muéstrala frente a la lente", icon: "👕" },
-  { item: "un cojín o almohada pequeña", stepText: "Toma un cojín o almohada pequeña y enséñalo a la cámara", icon: "🛋️" },
-  { item: "un zapato, pantufla o calcetín limpio", stepText: "Busca un zapato o calcetín limpio y muéstralo en la base", icon: "👟" },
-  { item: "dos objetos de colores distintos (uno en cada mano)", stepText: "Trae 2 objetos pequeños de distinto color y muéstralos juntos en cámara", icon: "🎨" },
-  { item: "una cuchara pequeña o vaso de plástico seguro", stepText: "Busca una cuchara pequeña o vaso de plástico y muéstralo a la cámara", icon: "🥄" },
-  { item: "una torre o par de bloques/LEGO unidos", stepText: "Une 2 o 3 bloques/piezas de juguete y muéstralos frente a la cámara", icon: "🧱" },
-  { item: "un objeto redondo (pelota, tapa o cinta)", stepText: "Encuentra cualquier objeto redondo seguro y muéstralo a la cámara", icon: "⚽" },
-  { item: "un objeto de color rojo o rosado", stepText: "Busca algo de color rojo o rosado en el cuarto y tráelo a la cámara", icon: "🌺" },
-  { item: "un peine, cepillo o accesorio para el cabello", stepText: "Busca un peine, cepillo o liga de cabello y muéstralo a la cámara", icon: "🪮" }
+  {
+    id: 'sorpresa',
+    label: '🎲 Sorpresa Espía',
+    prompt: 'Combina movimientos físicos divertidos por la habitación con buscar objetos cotidianos seguros de la casa.'
+  },
+  {
+    id: 'dibujo',
+    label: '✏️ Papel y Lápiz',
+    prompt: 'TEMÁTICA ESTRICTA DE PAPEL, LÁPIZ Y DIBUJO: TODOS los pasos deben involucrar hojas de papel, cuaderno, lápices, colores o marcadores (por ejemplo: buscar papel y colores específicos, dibujar cierta cantidad de figuras geométricas, estrellas, flores, números o letras, doblar la hoja, encerrar en un círculo) y el último paso SIEMPRE debe ser mostrar el dibujo o la hoja terminada frente a la cámara.'
+  },
+  {
+    id: 'lego',
+    label: '🧱 LEGO y Bloques',
+    prompt: 'TEMÁTICA ESTRICTA DE CONSTRUCCIÓN Y BLOQUES: TODOS los pasos deben girar en torno a buscar piezas de LEGO, bloques o fichas, clasificarlas por color o tamaño, armar torres, puentes o figuras con un número exacto de piezas, y mostrar la construcción terminada frente a la cámara.'
+  },
+  {
+    id: 'ninja',
+    label: '🥷 Agente Ninja',
+    prompt: 'TEMÁTICA ESTRICTA DE ENTRENAMIENTO NINJA FÍSICO: Los pasos deben centrarse en desafíos motores de agilidad, saltos ninja, equilibrios en un pie, caminar en puntillas en sigilo, poses de estatua, sentadillas y desplazamientos rápidos, terminando con una pose o trayendo un objeto secreto a la cámara.'
+  },
+  {
+    id: 'colores',
+    label: '🎨 Cazadora de Colores',
+    prompt: 'TEMÁTICA ESTRICTA DE COLORES: Cada paso debe exigir tocar, contar o recolectar objetos de colores muy específicos dentro de la habitación (ej: rojo, azul, amarillo, verde, morado) y mostrar los objetos del color pedido frente a la cámara.'
+  },
+  {
+    id: 'peluches',
+    label: '🧸 Peluches y Juguetes',
+    prompt: 'TEMÁTICA ESTRICTA DE JUGUETES Y PELUCHES: Los pasos deben consistir en una misión de rescate y acciones divertidas usando peluches, muñecos o juguetes del cuarto y mostrarlos en la cámara al final.'
+  }
 ];
 
 // Lista de modelos candidatos en orden de prioridad con fallback automático
@@ -134,62 +98,265 @@ const CANDIDATE_MODELS = [
   'gemini-2.0-flash'
 ];
 
-// Palabras vacías a ignorar al comparar lo que dice la niña por voz con los pasos
-const STOP_WORDS = new Set([
-  'para', 'como', 'hasta', 'con', 'una', 'uno', 'unos', 'unas', 'del', 'los', 'las',
-  'que', 'por', 'tus', 'mis', 'sus', 'este', 'esta', 'estos', 'estas', 'sobre',
-  'entre', 'hacia', 'desde', 'donde', 'cuando', 'muy', 'mas', 'sin', 'cámara', 'camara',
-  'base', 'lente', 'radar', 'muéstralo', 'muestralo', 'aquí', 'aqui', 'frente'
-]);
-
-// Normalizar texto sin tildes ni signos para comparación de voz flexible
-function normalizeText(str = '') {
-  return str
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+// Mezclar arreglo aleatoriamente
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
 }
 
-// Extraer palabras clave representativas de un paso
-function extractStepKeywords(stepText = '') {
-  const words = normalizeText(stepText).split(' ');
-  return words.filter(w => (w.length >= 4 && !STOP_WORDS.has(w)) || /^\d+$/.test(w));
+// Generador inteligente de 3 distractores MUY PARECIDOS a la instrucción correcta para que el test de memoria sea desafiante
+function generateTrickyOptions(correctText = '', existingDistractors = []) {
+  const cleanCorrect = String(correctText).trim();
+
+  // Si la IA ya nos dio al menos 3 distractores distintos y válidos, usarlos
+  const validFromAI = (Array.isArray(existingDistractors) ? existingDistractors : [])
+    .map(d => String(d).trim())
+    .filter(d => d && d.toLowerCase() !== cleanCorrect.toLowerCase());
+
+  const uniqueDistractors = Array.from(new Set(validFromAI));
+
+  // Grupos de palabras intercambiables para crear variaciones sutiles y engañosas
+  const swapGroups = [
+    ['rojo', 'azul', 'verde', 'amarillo', 'morado', 'naranja', 'rosado'],
+    ['roja', 'azul', 'verde', 'amarilla', 'morada', 'rosada'],
+    ['rojos', 'azules', 'verdes', 'amarillos', 'morados'],
+    ['estrellas', 'círculos', 'triángulos', 'corazones', 'cuadrados', 'flores', 'soles'],
+    ['estrella', 'círculo', 'triángulo', 'corazón', 'cuadrado', 'flor'],
+    ['saltos', 'sentadillas', 'pasos gigantes', 'giros', 'brincos'],
+    ['derecha', 'izquierda'],
+    ['derecho', 'izquierdo'],
+    ['arriba', 'abajo', 'al frente', 'atrás'],
+    ['puerta', 'ventana', 'pared', 'mesa', 'silla'],
+    ['codos', 'rodillas', 'hombros', 'talones', 'manos'],
+    ['pingüino', 'robot', 'cangrejo', 'rana', 'dinosaurio', 'flamenco'],
+    ['lápiz', 'marcador', 'crayón', 'bolígrafo', 'borrador'],
+    ['hoja', 'libreta', 'cuaderno', 'cartulina'],
+    ['peluche', 'cojín', 'muñeco', 'juguete', 'libro'],
+    ['cuchara', 'vaso', 'plato', 'peine', 'zapato']
+  ];
+
+  // Función que altera números y/o palabras clave dentro de la oración para hacerla muy parecida pero incorrecta
+  const createVariant = (variantIndex) => {
+    let modified = cleanCorrect;
+    let changedSomething = false;
+
+    // 1. Alterar números si existen en el paso
+    modified = modified.replace(/\b(\d+)\b/g, (match) => {
+      const n = parseInt(match, 10);
+      const offsets = [2, -1, 3, -2, 4, 1];
+      const delta = offsets[(variantIndex + n) % offsets.length];
+      const nextNum = Math.max(2, n + delta === n ? n + 2 : n + delta);
+      changedSomething = true;
+      return String(nextNum);
+    });
+
+    // 2. Intercambiar alguna palabra de los grupos semánticos
+    for (const group of swapGroups) {
+      for (let i = 0; i < group.length; i++) {
+        const word = group[i];
+        const regex = new RegExp(`\\b${word}\\b`, 'i');
+        if (regex.test(modified)) {
+          const replacement = group[(i + variantIndex + 1) % group.length];
+          modified = modified.replace(regex, (found) => {
+            changedSomething = true;
+            // Preservar mayúscula inicial si la tenía
+            if (found[0] === found[0].toUpperCase()) {
+              return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+            }
+            return replacement;
+          });
+          break;
+        }
+      }
+    }
+
+    // 3. Si la oración no tenía ni números ni palabras de la lista, agregar un detalle distractor plausible
+    if (!changedSomething || modified.toLowerCase() === cleanCorrect.toLowerCase()) {
+      const suffixes = [
+        ' con los ojos cerrados dos segundos',
+        ' mientras cuentas hasta cinco al revés',
+        ' usando solamente la mano izquierda',
+        ' dando dos palmadas antes de empezar',
+        ' caminando hacia atrás despacio'
+      ];
+      modified = cleanCorrect.replace(/\.$/, '') + suffixes[variantIndex % suffixes.length];
+    }
+
+    return modified;
+  };
+
+  let attempt = 0;
+  while (uniqueDistractors.length < 3 && attempt < 12) {
+    const candidate = createVariant(attempt);
+    if (
+      candidate.toLowerCase() !== cleanCorrect.toLowerCase() &&
+      !uniqueDistractors.some(d => d.toLowerCase() === candidate.toLowerCase())
+    ) {
+      uniqueDistractors.push(candidate);
+    }
+    attempt++;
+  }
+
+  // Garantizar siempre exactamente 4 opciones mezcladas
+  const finalFour = [cleanCorrect, ...uniqueDistractors.slice(0, 3)];
+  return shuffleArray(finalFour);
 }
 
-// Generador procedural único (nunca repite la misión anterior cuando se usa sin API Key)
-function buildUniqueProceduralMission(stepsCount, previousTitles = [], actionReps = 6) {
-  const dynamicActions = getScaledProceduralActions(actionReps);
-  const shuffledActions = [...dynamicActions].sort(() => Math.random() - 0.5);
-  const availableTargets = PROCEDURAL_TARGETS.filter(
+// Bancos procedurales por temática para cuando se juega sin conexión o como respaldo
+function getProceduralDataByTheme(themeId = 'sorpresa', reps = 6) {
+  const r = Math.max(2, Number(reps) || 6);
+  const half = Math.max(2, Math.round(r * 0.6));
+
+  if (themeId === 'dibujo') {
+    return {
+      category: `✏️ Papel y Lápiz (${r}x)`,
+      actions: [
+        { text: `Busca una hoja de papel o cuaderno y ponlo sobre la mesa`, icon: "📄" },
+        { text: `Toma un lápiz o marcador y dibuja ${r} estrellas grandes en la hoja`, icon: "⭐" },
+        { text: `Dibuja ${half} círculos y ${half} triángulos alrededor de la hoja`, icon: "🔺" },
+        { text: `Escribe los números del 1 al ${r} en una esquina del papel`, icon: "🔢" },
+        { text: `Dibuja una carita feliz gigante con ${r} rayos de sol alrededor`, icon: "☀️" },
+        { text: `Traza ${r} líneas en zigzag de lado a lado de la hoja`, icon: "〰️" },
+        { text: `Dibuja una torre de ${half} pisos con una bandera en la cima`, icon: "🏰" },
+        { text: `Haz ${r} puntos de colores distintos dentro de un cuadro grande`, icon: "🎨" }
+      ],
+      targets: [
+        { item: "tu hoja de papel con el dibujo terminado", stepText: "Sostén tu hoja con el dibujo frente a la cámara para escanearlo", icon: "✏️" },
+        { item: "tu dibujo y el lápiz o color que usaste", stepText: "Muestra tu dibujo junto con tu lápiz o marcador frente a la cámara", icon: "🖍️" }
+      ]
+    };
+  }
+
+  if (themeId === 'lego') {
+    return {
+      category: `🧱 LEGO y Bloques (${r}x)`,
+      actions: [
+        { text: `Ve a tu zona de juguetes y reúne ${r} bloques o piezas de LEGO`, icon: "🧱" },
+        { text: `Separa ${half} piezas de colores claros y ${half} de colores oscuros`, icon: "🎨" },
+        { text: `Arma una torre vertical uniendo ${Math.min(10, r)} piezas seguidas`, icon: "🗼" },
+        { text: `Camina con la construcción en las manos dando ${r} pasos de robot sin que se caiga`, icon: "🤖" },
+        { text: `Coloca una pieza roja o azul en la parte más alta de tu construcción`, icon: "🔴" },
+        { text: `Construye una escalera o puente usando al menos ${half} bloques`, icon: "🌉" }
+      ],
+      targets: [
+        { item: "tu torre o figura armada con bloques/LEGO", stepText: "Coloca tu construcción de bloques frente a la cámara para validarla", icon: "🧱" }
+      ]
+    };
+  }
+
+  if (themeId === 'ninja') {
+    return {
+      category: `🥷 Agente Ninja (${r}x)`,
+      actions: [
+        { text: `Camina en sigilo ninja en puntillas durante ${r} pasos sin hacer ruido`, icon: "🥷" },
+        { text: `Da ${r} saltos rápidos abriendo y cerrando los brazos`, icon: "⚡" },
+        { text: `Haz equilibrio en un solo pie como grulla contando hasta ${r + 3}`, icon: "🦩" },
+        { text: `Haz ${r} sentadillas ninja tocando el suelo con las puntas de los dedos`, icon: "🥋" },
+        { text: `Esquiva láseres imaginarios agachándote ${half} veces seguidas`, icon: "レーザー" },
+        { text: `Toca la pared derecha, luego la izquierda y da ${half} giros rápidos`, icon: "🌪️" }
+      ],
+      targets: [
+        { item: "un cojín o cinta haciendo pose ninja", stepText: "Trae un cojín o juguete y haz tu mejor pose ninja frente a la cámara", icon: "🥷" }
+      ]
+    };
+  }
+
+  if (themeId === 'colores') {
+    return {
+      category: `🎨 Cazadora de Colores (${r}x)`,
+      actions: [
+        { text: `Busca y toca ${half} objetos de color azul en la habitación`, icon: "🔵" },
+        { text: `Da ${r} palmadas frente a algo de color blanco o amarillo`, icon: "🟡" },
+        { text: `Camina ${r} pasos gigantes hasta tocar algo de color rojo o rosado`, icon: "🔴" },
+        { text: `Toca con el codo un objeto verde y da ${half} saltitos`, icon: "🟢" },
+        { text: `Señala ${r} cosas de diferentes colores diciendo su color en voz alta`, icon: "🌈" }
+      ],
+      targets: [
+        { item: "dos objetos de colores distintos (uno en cada mano)", stepText: "Trae 2 objetos de colores diferentes y muéstralos juntos en la cámara", icon: "🎨" },
+        { item: "un objeto de color azul y uno rojo", stepText: "Muestra un objeto azul y uno rojo frente a la lente de la cámara", icon: "🌈" }
+      ]
+    };
+  }
+
+  if (themeId === 'peluches') {
+    return {
+      category: `🧸 Peluches y Juguetes (${r}x)`,
+      actions: [
+        { text: `Ve hasta donde están tus juguetes dando ${r} saltos de canguro`, icon: "🦘" },
+        { text: `Elige un peluche o muñeco y dale ${half} vueltas en el aire con cuidado`, icon: "🧸" },
+        { text: `Camina ${r} pasos llevando el peluche en equilibrio sobre tu cabeza o hombro`, icon: "🎪" },
+        { text: `Siéntate en el suelo con tu juguete y levántate ${half} veces`, icon: "🚀" },
+        { text: `Pon a bailar a tu peluche mientras das ${r} pasos de baile`, icon: "💃" }
+      ],
+      targets: [
+        { item: "tu peluche o juguete rescatado", stepText: "Presenta a tu peluche o juguete frente a la cámara del Cuartel", icon: "🧸" }
+      ]
+    };
+  }
+
+  // Default: 'sorpresa'
+  return {
+    category: `🎲 Sorpresa Espía (${r}x)`,
+    actions: [
+      { text: `Camina como pingüino ${r} pasos seguidos hasta la puerta de la habitación`, icon: "🐧" },
+      { text: `Da ${r} saltos altos abriendo los brazos como estrella`, icon: "⭐" },
+      { text: `Toca el suelo con ambas manos y levántate de un salto ${half} veces`, icon: "🐸" },
+      { text: `Gira ${half} vueltas sobre tus pies con cuidado como un trompo`, icon: "🌀" },
+      { text: `Haz equilibrio en un solo pie mientras cuentas en voz alta hasta ${r + 3}`, icon: "🦩" },
+      { text: `Aplaude ${r} veces por encima de tu cabeza y ${half} veces abajo`, icon: "👏" },
+      { text: `Camina hacia atrás ${r} pasos como un cangrejo espía`, icon: "🦀" },
+      { text: `Haz ${r} sentadillas de agente élite y saluda como comandante`, icon: "🫡" }
+    ],
+    targets: [
+      { item: "un lápiz, color o marcador", stepText: "Busca un lápiz, color o marcador y muéstralo frente a la cámara", icon: "✏️" },
+      { item: "un peluche o muñeco pequeño", stepText: "Rescata un peluche o juguete pequeño y tráelo a la cámara", icon: "🧸" },
+      { item: "un libro o cuaderno", stepText: "Busca un libro, cuento o cuaderno y muéstralo en la cámara", icon: "📚" },
+      { item: "un cojín o almohada pequeña", stepText: "Toma un cojín o almohada pequeña y enséñalo a la cámara", icon: "🛋️" },
+      { item: "una cuchara pequeña o vaso de plástico seguro", stepText: "Busca una cuchara pequeña o vaso de plástico y muéstralo a la cámara", icon: "🥄" }
+    ]
+  };
+}
+
+// Generador procedural único respetando siempre la temática y creando 4 opciones por paso
+function buildUniqueProceduralMission(stepsCount, previousTitles = [], actionReps = 6, themeId = 'sorpresa') {
+  const themeData = getProceduralDataByTheme(themeId, actionReps);
+  const shuffledActions = [...themeData.actions].sort(() => Math.random() - 0.5);
+  const availableTargets = themeData.targets.filter(
     t => !previousTitles.some(prev => prev.includes(t.item))
   );
-  const targetPool = availableTargets.length > 0 ? availableTargets : PROCEDURAL_TARGETS;
+  const targetPool = availableTargets.length > 0 ? availableTargets : themeData.targets;
   const chosenTarget = targetPool[Math.floor(Math.random() * targetPool.length)];
 
   const actionStepsCount = Math.max(1, stepsCount - 1);
-  const selectedSteps = shuffledActions.slice(0, actionStepsCount).map((act, idx) => ({
+  const rawSteps = shuffledActions.slice(0, actionStepsCount).map((act, idx) => ({
     id: idx + 1,
     text: act.text,
     icon: act.icon
   }));
 
-  selectedSteps.push({
+  rawSteps.push({
     id: actionStepsCount + 1,
     text: chosenTarget.stepText,
     icon: chosenTarget.icon
   });
 
+  const stepsWithQuiz = rawSteps.map((s) => ({
+    ...s,
+    options: generateTrickyOptions(s.text)
+  }));
+
   const codeNumber = Math.floor(100 + Math.random() * 900);
   return {
-    stepsCount: selectedSteps.length,
+    stepsCount: stepsWithQuiz.length,
     actionReps,
-    category: `Misión Dinámica • Intensidad ${actionReps}x`,
-    title: `Operación Secreta #${codeNumber}: ${chosenTarget.icon}`,
+    category: themeData.category,
+    title: `Operación #${codeNumber}: ${chosenTarget.icon}`,
     targetItem: chosenTarget.item,
-    steps: selectedSteps
+    steps: stepsWithQuiz
   };
 }
 
@@ -200,16 +367,26 @@ function buildProceduralCleanupMission(objectsToClean = []) {
     ? uniqueObjects
     : ['los objetos que usaste en las misiones anteriores'];
 
-  const cleanupSteps = itemsList.map((obj, idx) => ({
-    id: idx + 1,
-    text: `Toma ${obj} y devuélvelo ordenadamente a su lugar original en la casa`,
-    icon: "🧹"
-  }));
+  const cleanupSteps = itemsList.map((obj, idx) => {
+    const text = `Toma ${obj} y devuélvelo ordenadamente a su lugar original en la casa`;
+    return {
+      id: idx + 1,
+      text,
+      icon: "🧹",
+      options: generateTrickyOptions(text, [
+        `Deja ${obj} debajo de la mesa de la sala`,
+        `Esconde ${obj} detrás de la puerta del cuarto`,
+        `Cambia ${obj} por otro juguete nuevo sin guardarlo`
+      ])
+    };
+  });
 
+  const lastText = "Da un salto de victoria y muestra tus dos manos libres con el pulgar arriba frente a la cámara";
   cleanupSteps.push({
     id: cleanupSteps.length + 1,
-    text: "Da un salto de victoria y muestra tus dos manos libres con el pulgar arriba frente a la cámara",
-    icon: "👍"
+    text: lastText,
+    icon: "👍",
+    options: generateTrickyOptions(lastText)
   });
 
   return {
@@ -250,33 +427,25 @@ export default function App() {
 
   // Estado de la Misión Actual, Intensidad por Paso, Historial Anti-Repetición y Generador IA
   const [difficultySteps, setDifficultySteps] = useState(3);
-  const [actionReps, setActionReps] = useState(8); // Cantidad de repeticiones/largo por paso (ej: 3 saltos vs 10 o 15 saltos)
+  const [actionReps, setActionReps] = useState(8);
   const [selectedTheme, setSelectedTheme] = useState('sorpresa');
   const [customPrompt, setCustomPrompt] = useState('');
   const [missionHistory, setMissionHistory] = useState([]);
-  const [currentMission, setCurrentMission] = useState(() => buildUniqueProceduralMission(3, [], 8));
+  const [currentMission, setCurrentMission] = useState(() =>
+    buildUniqueProceduralMission(3, [], 8, 'sorpresa')
+  );
   const [aiErrorMsg, setAiErrorMsg] = useState(null);
   
-  // Flujo del protocolo: 'listen' -> 'repeat' -> 'action' -> 'verify' -> 'success'
+  // Flujo del protocolo: 'listen' -> 'repeat' (quiz de 4 opciones por paso) -> 'action' -> 'verify' -> 'success'
   const [phase, setPhase] = useState('listen');
-  const [repeatTaps, setRepeatTaps] = useState(0); 
+  const [quizStepIndex, setQuizStepIndex] = useState(0); // Índice del paso que está recordando (0 a steps.length - 1)
+  const [wrongOptionSelected, setWrongOptionSelected] = useState(null);
+  const [quizFeedbackMsg, setQuizFeedbackMsg] = useState("");
+  const [peekInstructions, setPeekInstructions] = useState(false);
+
   const [timerSeconds, setTimerSeconds] = useState(90);
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [checkedSteps, setCheckedSteps] = useState([]);
-
-  // Reconocimiento de Voz con Grabación de Audio Real + Gemini Multimodal (Fase 2: Repetir)
-  const [isListeningVoice, setIsListeningVoice] = useState(false);
-  const [isEvaluatingVoice, setIsEvaluatingVoice] = useState(false);
-  const [liveTranscript, setLiveTranscript] = useState("");
-  const [matchedStepIdsInRep, setMatchedStepIdsInRep] = useState([]);
-  const [voiceStatusMsg, setVoiceStatusMsg] = useState("");
-  const [peekInstructions, setPeekInstructions] = useState(false);
-  const recognitionRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  const audioStreamRef = useRef(null);
-  const repeatTapsRef = useRef(0);
-  const cooldownRepRef = useRef(false);
 
   // Cámara e IA Gemini
   const [cameraActive, setCameraActive] = useState(false);
@@ -290,10 +459,6 @@ export default function App() {
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
   const didInitialAIFetch = useRef(false);
-
-  useEffect(() => {
-    repeatTapsRef.current = repeatTaps;
-  }, [repeatTaps]);
 
   useEffect(() => {
     if (showKeyModal) {
@@ -435,7 +600,7 @@ export default function App() {
     setShowKeyModal(false);
     SpyAudio.playSuccess();
     if (cleanKey) {
-      generateNewAIMission(difficultySteps, selectedTheme, cleanKey);
+      generateNewAIMission(difficultySteps, selectedTheme, cleanKey, actionReps);
     }
   };
 
@@ -463,296 +628,50 @@ export default function App() {
     if (!missionToRead) return;
     SpyAudio.playRadar();
     const stepsSpoken = missionToRead.steps.map((s, idx) => `Paso ${idx + 1}: ${s.text}`).join(". ");
-    const speech = `¡Atenta Agente! Misión "${missionToRead.title}" de ${missionToRead.steps.length} pasos. ${stepsSpoken}. Repite la misión en voz alta tres veces antes de moverte.`;
+    const speech = `¡Atenta Agente! Misión "${missionToRead.title}" de ${missionToRead.steps.length} pasos. ${stepsSpoken}. Memorízalos bien para superar el reto de memoria.`;
     speakText(speech);
   };
 
-  // ================== RECONOCIMIENTO DE VOZ REAL CON GEMINI AUDIO (FASE 2) ==================
-  const cleanupAudioRecording = () => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.onend = null;
-        recognitionRef.current.stop();
-      } catch (_) {}
-      recognitionRef.current = null;
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (_) {}
-    }
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach(t => t.stop());
-      audioStreamRef.current = null;
-    }
-    setIsListeningVoice(false);
-  };
+  // ================== SELECCIÓN SIMPLE DE 4 OPCIONES POR PASO (FASE 2) ==================
+  const handleSelectQuizOption = (selectedText) => {
+    const currentStepObj = currentMission.steps[quizStepIndex];
+    if (!currentStepObj) return;
 
-  const registerCompletedRepetition = (source = 'voice', customMsg = '') => {
-    if (cooldownRepRef.current) return;
-    cooldownRepRef.current = true;
-    setTimeout(() => {
-      cooldownRepRef.current = false;
-    }, 800);
+    if (selectedText.trim().toLowerCase() === currentStepObj.text.trim().toLowerCase()) {
+      // ¡Respuesta correcta!
+      setWrongOptionSelected(null);
+      const nextStepIdx = quizStepIndex + 1;
+      SpyAudio.playBeep(520 + nextStepIdx * 90, 'sine', 0.14);
 
-    const next = repeatTapsRef.current + 1;
-    repeatTapsRef.current = next;
-    setRepeatTaps(next);
-    SpyAudio.playBeep(440 + next * 120, 'sine', 0.15);
-
-    if (next >= 3) {
-      cleanupAudioRecording();
-      setVoiceStatusMsg(customMsg || "¡3 repeticiones completadas! ¡A cumplir la misión!");
-      setTimeout(() => {
-        setPhase('action');
-        setIsTimerActive(true);
-        SpyAudio.playSuccess();
-        speakText("¡Cerebro activado! Tienes el tiempo en marcha para completar la misión en la casa.");
-      }, 600);
-    } else if (source === 'voice') {
-      const msg = customMsg || `¡Excelente memoria! Repetición ${next} de 3 validada. ¡Dila una vez más!`;
-      setVoiceStatusMsg(msg);
-      speakText(`¡Muy bien! Llevas ${next} de 3. Repítela una vez más.`);
-    }
-  };
-
-  // Convertir Blob de audio a Base64
-  const blobToBase64 = (blob) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const dataUrl = reader.result || '';
-        const base64 = String(dataUrl).split(',')[1] || '';
-        resolve(base64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  };
-
-  // Evaluar estrictamente coincidencias locales (solo palabras de >= 4 letras con raíz exacta, sin falsos positivos)
-  const evaluateSpokenTextLocally = (spokenText) => {
-    const normSpoken = normalizeText(spokenText);
-    const spokenWords = normSpoken.split(' ').filter(w => w.length >= 3 || /^\d+$/.test(w));
-    const matchedIds = [];
-
-    currentMission.steps.forEach((step) => {
-      const keywords = extractStepKeywords(step.text);
-      if (keywords.length === 0) return;
-      const matchedCount = keywords.filter(kw => {
-        if (/^\d+$/.test(kw)) return spokenWords.includes(kw);
-        const stem = kw.slice(0, Math.min(kw.length, 5));
-        return spokenWords.some(sw => sw.length >= 4 && sw.startsWith(stem));
-      }).length;
-
-      if (matchedCount >= 1) {
-        matchedIds.push(step.id);
+      if (nextStepIdx >= currentMission.steps.length) {
+        // Completó todos los pasos del test de memoria
+        setQuizStepIndex(nextStepIdx);
+        setQuizFeedbackMsg("¡Excelente! Recordaste todos los pasos en el orden exacto.");
+        setTimeout(() => {
+          setPhase('action');
+          setIsTimerActive(true);
+          SpyAudio.playSuccess();
+          speakText("¡Memoria verificada al cien por ciento! Ahora corre a cumplir la misión en la casa.");
+        }, 500);
+      } else {
+        setQuizStepIndex(nextStepIdx);
+        setQuizFeedbackMsg(`✅ ¡Paso ${quizStepIndex + 1} correcto! Ahora selecciona cuál era el Paso ${nextStepIdx + 1}.`);
       }
-    });
-
-    return matchedIds;
-  };
-
-  // Iniciar grabación de voz del micrófono
-  const startVoiceRecognition = async () => {
-    if (typeof window === 'undefined') return;
-
-    // Cancelar síntesis de voz si estaba hablando
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-
-    cleanupAudioRecording();
-    setMatchedStepIdsInRep([]);
-    setLiveTranscript("");
-    audioChunksRef.current = [];
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioStreamRef.current = stream;
-
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : 'audio/mp4';
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
-      };
-
-      recorder.start(250);
-      setIsListeningVoice(true);
-      setVoiceStatusMsg("🎙️ Grabando tu voz... Di los pasos que recuerdes y luego pulsa '¡Ya lo dije! Evaluar'.");
-      SpyAudio.playRadar();
-
-      // Opcionalmente mostrar subtítulos en vivo si el navegador lo soporta (sin disparar nada al azar)
-      const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognitionClass) {
-        try {
-          const recognition = new SpeechRecognitionClass();
-          recognition.lang = 'es-ES';
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          let finalTranscriptSoFar = "";
-          recognition.onresult = (event) => {
-            let interim = "";
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-              if (event.results[i].isFinal) {
-                finalTranscriptSoFar += " " + event.results[i][0].transcript;
-              } else {
-                interim += " " + event.results[i][0].transcript;
-              }
-            }
-            setLiveTranscript((finalTranscriptSoFar + " " + interim).trim());
-          };
-          recognition.start();
-          recognitionRef.current = recognition;
-        } catch (_) {}
-      }
-    } catch (err) {
-      console.warn("Error al acceder al micrófono:", err);
-      setVoiceStatusMsg("No se pudo acceder al micrófono. Revisa los permisos del navegador o usa el botón manual.");
-      setIsListeningVoice(false);
-    }
-  };
-
-  // Detener grabación y analizar el audio con Gemini Multimodal (o evaluador local si no hay API Key)
-  const finishAndEvaluateVoice = async () => {
-    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
-      cleanupAudioRecording();
-      return;
-    }
-
-    setIsEvaluatingVoice(true);
-    setVoiceStatusMsg("🔍 El Cuartel IA está escuchando tu grabación...");
-    SpyAudio.playRadar();
-
-    const recorder = mediaRecorderRef.current;
-    const mimeType = (recorder.mimeType || 'audio/webm').split(';')[0];
-
-    const audioBlob = await new Promise((resolve) => {
-      recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: mimeType });
-        resolve(blob);
-      };
-      try {
-        recorder.stop();
-      } catch (_) {
-        resolve(new Blob(audioChunksRef.current, { type: mimeType }));
-      }
-    });
-
-    cleanupAudioRecording();
-
-    // Si hay API Key activa, enviar el audio real a Gemini para que transcriba y valide con precisión
-    if (apiKey.trim() && audioBlob.size > 500) {
-      try {
-        const base64Audio = await blobToBase64(audioBlob);
-        const stepsDescription = currentMission.steps
-          .map((s, idx) => `Paso ${idx + 1} (id=${s.id}): "${s.text}"`)
-          .join('\n');
-
-        const prompt = `Escucha con atención esta grabación de voz de una niña que está intentando repetir de memoria los pasos de su misión secreta.
-Los pasos de la misión son:
-${stepsDescription}
-
-Evalúa qué dijo realmente en el audio:
-1. Transcribe exactamente lo que dijo la niña en español. Si no se escucha a nadie hablando o solo hay ruido, deja "transcripcion" vacío y "aprobado": false.
-2. Identifica cuáles de los pasos (por su número de id: ${currentMission.steps.map(s => s.id).join(', ')}) sí mencionó o describió con sus propias palabras (sé flexible con sinónimos infantiles, por ejemplo "dar brincos" = "saltos", "ir a la puerta" = "tocar la puerta").
-3. Marca "aprobado": true si mencionó la idea principal de al menos ${Math.max(1, Math.ceil(currentMission.steps.length * 0.65))} de los ${currentMission.steps.length} pasos. Si dijo cosas al azar que no tienen relación con la misión o le faltaron muchos pasos, marca "aprobado": false.
-
-Devuelve ÚNICAMENTE un objeto JSON válido con este formato:
-{
-  "transcripcion": "lo que dijo la niña",
-  "pasos_recordados_ids": [1, 2],
-  "aprobado": true,
-  "comentario_espia": "Mensaje corto y motivador diciendo qué pasos recordó o cuál le faltó mencionar"
-}`;
-
-        const { data } = await callGeminiWithFallback(apiKey, {
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: prompt },
-                {
-                  inlineData: {
-                    mimeType,
-                    data: base64Audio
-                  }
-                }
-              ]
-            }
-          ],
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0.2
-          }
-        });
-
-        const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        const parsed = parseCleanJson(rawJson);
-
-        if (parsed.transcripcion) {
-          setLiveTranscript(parsed.transcripcion);
-        }
-        const rememberedIds = Array.isArray(parsed.pasos_recordados_ids) ? parsed.pasos_recordados_ids : [];
-        setMatchedStepIdsInRep(rememberedIds);
-
-        if (parsed.aprobado) {
-          registerCompletedRepetition('voice', parsed.comentario_espia);
-        } else {
-          SpyAudio.playAlarm();
-          const feedbackText = parsed.comentario_espia || `Recordaste ${rememberedIds.length} de ${currentMission.steps.length} pasos. ¡Intenta decir todos los pasos otra vez!`;
-          setVoiceStatusMsg(`⚠️ ${feedbackText}`);
-          speakText(feedbackText);
-        }
-      } catch (err) {
-        console.warn("Error analizando audio con Gemini, usando texto local:", err);
-        const matchedLocal = evaluateSpokenTextLocally(liveTranscript);
-        setMatchedStepIdsInRep(matchedLocal);
-        const required = Math.max(1, Math.ceil(currentMission.steps.length * 0.65));
-        if (matchedLocal.length >= required) {
-          registerCompletedRepetition('voice');
-        } else {
-          SpyAudio.playAlarm();
-          setVoiceStatusMsg(`Detectamos ${matchedLocal.length} de ${currentMission.steps.length} pasos. ¡Intenta mencionar todos los pasos o usa el botón manual!`);
-        }
-      } finally {
-        setIsEvaluatingVoice(false);
-      }
-      return;
-    }
-
-    // Modo sin API Key: evaluar texto transcrito localmente sin falsos positivos
-    const matchedLocal = evaluateSpokenTextLocally(liveTranscript);
-    setMatchedStepIdsInRep(matchedLocal);
-    setIsEvaluatingVoice(false);
-    const required = Math.max(1, Math.ceil(currentMission.steps.length * 0.65));
-    if (matchedLocal.length >= required) {
-      registerCompletedRepetition('voice');
     } else {
+      // Respuesta incorrecta (trampa/distractor)
       SpyAudio.playAlarm();
-      setVoiceStatusMsg(`Mencionaste ${matchedLocal.length} de ${currentMission.steps.length} pasos. ¡Di todos los pasos o configura tu API Key para análisis de voz con IA!`);
+      setWrongOptionSelected(selectedText);
+      setQuizFeedbackMsg("❌ ¡Casi! Esa opción tiene un detalle cambiado. Recuerda bien el número, color o acción exacta.");
     }
   };
 
-  // Detener micrófono al salir de la fase 'repeat' y reiniciar vista de pista
   useEffect(() => {
     setPeekInstructions(false);
-    if (phase !== 'repeat') {
-      cleanupAudioRecording();
-      setLiveTranscript("");
-      setMatchedStepIdsInRep([]);
-      setVoiceStatusMsg("");
+    setWrongOptionSelected(null);
+    setQuizFeedbackMsg("");
+    if (phase === 'repeat') {
+      setQuizStepIndex(0);
     }
-    return () => cleanupAudioRecording();
   }, [phase]);
 
   // Temporizador de cuenta regresiva
@@ -866,8 +785,8 @@ La misión solicitaba mostrar al final: "${currentMission.targetItem || currentM
 Pasos completos asignados (${currentMission.steps.length} pasos): ${currentMission.steps.map(s => s.text).join(' | ')}.
 
 Observa con atención la foto enviada desde la webcam.
-¿Se observa en la imagen el objeto, la construcción, la persona haciendo la señal/acción, o el elemento solicitado (${currentMission.targetItem})? 
-Sé muy tolerante con la iluminación, reflejos o si la niña sostiene el objeto o muestra sus manos/pulgar arriba.
+¿Se observa en la imagen el dibujo, el objeto, la construcción, la persona haciendo la señal/acción, o el elemento solicitado (${currentMission.targetItem})? 
+Sé muy tolerante con la iluminación, reflejos o si la niña sostiene el dibujo u objeto con sus manos.
 
 Responde ÚNICAMENTE un objeto JSON válido con este formato:
 {
@@ -935,12 +854,10 @@ Responde ÚNICAMENTE un objeto JSON válido con este formato:
     setCompletedCount(c => c + 1);
 
     if (isCleanup) {
-      // Si acaba de completar la misión de recoger objetos, vaciar la lista de objetos pendientes
       setUsedObjects([]);
       setStepsSinceCleanup(0);
       speakText(cheerMessage || "¡Cuartel General impecable! Guardaste todos los objetos secretos en su lugar y ganaste un bono extra.");
     } else {
-      // Registrar el objeto que se usó en esta misión y sumar los pasos acumulados
       if (currentMission.targetItem) {
         setUsedObjects(prev => {
           if (prev.includes(currentMission.targetItem)) return prev;
@@ -983,8 +900,9 @@ OBJETOS USADOS QUE DEBE RECOGER Y GUARDAR:
 ${itemsToClean.map((item, i) => `${i + 1}. ${item}`).join('\n')}
 
 Crea una "🧹 Misión Especial de Orden Secreto" de EXACTAMENTE ${totalCleanupSteps} pasos secuenciales donde:
-- La niña deba recoger cada uno de esos objetos (${itemsToClean.join(', ')}) y llevarlos de vuelta a su lugar correcto en la casa de forma divertida (ej: caminando como ninja, en puntillas, dando un giro al guardarlo, etc.).
+- La niña deba recoger cada uno de esos objetos (${itemsToClean.join(', ')}) y llevarlos de vuelta a su lugar correcto en la casa de forma divertida.
 - El último paso (Paso ${totalCleanupSteps}) SIEMPRE debe ser regresar a la cámara y mostrar sus dos manos vacías con los pulgares arriba 👍 para demostrar que ya guardó todo.
+- Para cada paso incluye también "distractors": un arreglo con 3 opciones falsas pero muy parecidas al texto del paso (cambiando un número, lugar u objeto) para el test de memoria.
 
 Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
 {
@@ -992,7 +910,16 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
   "category": "🧹 Misión Especial de Orden",
   "targetItem": "tus dos manos libres con los pulgares arriba 👍 tras guardar todos los objetos",
   "steps": [
-    { "id": 1, "text": "Paso 1 para recoger y guardar el primer objeto en su sitio", "icon": "🧹" }
+    {
+      "id": 1,
+      "text": "Paso 1 para recoger y guardar el primer objeto en su sitio",
+      "icon": "🧹",
+      "distractors": [
+        "Opción falsa muy parecida 1",
+        "Opción falsa muy parecida 2",
+        "Opción falsa muy parecida 3"
+      ]
+    }
   ]
 }`;
 
@@ -1009,11 +936,15 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
       const missionJson = parseCleanJson(rawText);
 
       if (missionJson.steps && Array.isArray(missionJson.steps) && missionJson.steps.length > 0) {
-        const normalizedSteps = missionJson.steps.map((s, idx) => ({
-          id: idx + 1,
-          text: s.text || `Guarda el objeto ${idx + 1} en su sitio`,
-          icon: s.icon || "🧹"
-        }));
+        const normalizedSteps = missionJson.steps.map((s, idx) => {
+          const stepText = s.text || `Guarda el objeto ${idx + 1} en su sitio`;
+          return {
+            id: idx + 1,
+            text: stepText,
+            icon: s.icon || "🧹",
+            options: generateTrickyOptions(stepText, s.distractors)
+          };
+        });
         const cleanupMission = {
           ...missionJson,
           isAI: true,
@@ -1050,11 +981,11 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
     if (shouldTriggerCleanup) {
       await generateCleanupMission(usedObjects);
     } else {
-      await generateNewAIMission(targetSteps, themeId);
+      await generateNewAIMission(targetSteps, themeId, apiKey, actionReps);
     }
   };
 
-  // Generador de Misiones e Instrucciones con Gemini IA (con memoria anti-repetición e intensidad configurable)
+  // Generador de Misiones e Instrucciones con Gemini IA (respetando estrictamente la temática y creando 4 opciones por paso)
   const generateNewAIMission = async (
     stepsToGenerate = difficultySteps,
     themeId = selectedTheme,
@@ -1063,10 +994,11 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
   ) => {
     const targetSteps = typeof stepsToGenerate === 'number' ? stepsToGenerate : difficultySteps;
     const targetReps = typeof repsToUse === 'number' ? repsToUse : actionReps;
+    const activeThemeId = typeof themeId === 'string' ? themeId : selectedTheme;
     const activeKeyToUse = (typeof overrideKey === 'string' ? overrideKey : apiKey).trim();
 
     if (!activeKeyToUse) {
-      const procMission = buildUniqueProceduralMission(targetSteps, missionHistory, targetReps);
+      const procMission = buildUniqueProceduralMission(targetSteps, missionHistory, targetReps, activeThemeId);
       setMissionHistory(prev => [...prev.slice(-15), `${procMission.title} (${procMission.targetItem})`]);
       setCurrentMission(procMission);
       resetMissionFlow(procMission.steps.length, targetReps);
@@ -1080,8 +1012,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
     setAiErrorMsg(null);
     SpyAudio.playRadar();
 
-    const themeObj = AI_THEMES.find(t => t.id === themeId) || AI_THEMES[0];
-    const randomScenario = CREATIVE_SCENARIOS[Math.floor(Math.random() * CREATIVE_SCENARIOS.length)];
+    const themeObj = AI_THEMES.find(t => t.id === activeThemeId) || AI_THEMES[0];
     const randomSeedId = Math.floor(10000 + Math.random() * 90000);
 
     const recentHistoryList = [
@@ -1089,41 +1020,51 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
       ...missionHistory.slice(-10)
     ].join('\n- ');
 
-    const themeInstruction = customPrompt.trim()
-      ? `Instrucción especial solicitada por la familia: "${customPrompt.trim()}".`
-      : `Temática elegida: ${themeObj.label} — ${themeObj.prompt}`;
+    const customUserRequest = customPrompt.trim()
+      ? `\nPETICIÓN ADICIONAL ESPECÍFICA DE LA FAMILIA (OBLIGATORIO INCLUIRLA): "${customPrompt.trim()}".`
+      : '';
 
     const stepsTemplateExample = Array.from({ length: targetSteps }, (_, idx) => {
       const isLast = idx === targetSteps - 1;
-      return `    { "id": ${idx + 1}, "text": "${
+      return `    {
+      "id": ${idx + 1},
+      "text": "${
         isLast
-          ? 'Último paso: traer el objeto o mostrar el resultado frente a la cámara'
-          : `Acción física con ~${targetReps} repeticiones o ${targetReps + 4} segundos (ej: dar ${targetReps} saltos, ${targetReps} pasos gigantes, ${targetReps} palmadas, etc.)`
-      }", "icon": "✨" }`;
+          ? `Paso final (${targetSteps}): mostrar ante la cámara el resultado u objeto de la temática ${themeObj.label}`
+          : `Paso ${idx + 1} cumpliendo estrictamente la temática ${themeObj.label} con intensidad/cantidad ~${targetReps}`
+      }",
+      "icon": "✨",
+      "distractors": [
+        "Opción trampa 1 MUY parecida al paso ${idx + 1} pero cambiando el número o el color",
+        "Opción trampa 2 MUY parecida al paso ${idx + 1} pero cambiando la figura, objeto o dirección",
+        "Opción trampa 3 MUY parecida al paso ${idx + 1} pero cambiando un detalle clave de la acción"
+      ]
+    }`;
     }).join(',\n');
 
     const prompt = `Eres un diseñador experto en neuroeducación infantil y juegos de espías para entrenar la memoria operativa (memoria de trabajo) y el seguimiento de instrucciones secuenciales.
 
-Semilla creativa única: #${randomSeedId} — Inspiración de estilo: "${randomScenario}".
-Crea una misión física TOTALMENTE NUEVA, original y diferente a las anteriores para realizar dentro de casa.
+ID de Misión Única: #${randomSeedId}
 CANTIDAD OBLIGATORIA DE PASOS: EXACTAMENTE ${targetSteps} pasos secuenciales (numerados del 1 al ${targetSteps}).
-LARGO E INTENSIDAD DE CADA PASO: Nivel ${targetReps}x — Cada paso de movimiento o ejercicio debe pedir alrededor de ${targetReps} repeticiones (por ejemplo: "${targetReps} saltos", "${targetReps} sentadillas", "${targetReps} pasos de gigante", "${targetReps} palmadas", o mantener equilibrio por ${targetReps + 4} segundos) y puede combinar dos detalles en la misma oración cuando la intensidad es alta (${targetReps} >= 8).
-${themeInstruction}
+INTENSIDAD / CANTIDADES DENTRO DE CADA PASO: ~${targetReps} repeticiones o elementos (por ejemplo: dibujar ${targetReps} figuras, dar ${targetReps} saltos, usar ${targetReps} bloques, contar hasta ${targetReps + 3}, etc.).
 
-HISTORIAL DE MISIONES YA JUGADAS (PROHIBIDO REPETIR ESTOS TÍTULOS, OBJETOS O MISMAS ACCIONES):
+===================================================================
+TEMÁTICA OBLIGATORIA SELECCIONADA POR EL USUARIO: ${themeObj.label}
+REGLA DE TEMÁTICA: ${themeObj.prompt}${customUserRequest}
+¡IMPORTANTE!: TODOS los pasos de la misión y el objeto final DEBEN tratar directamente sobre esta temática (${themeObj.label}). No inventes pasos de otra temática distinta.
+===================================================================
+
+HISTORIAL DE MISIONES YA JUGADAS (PROHIBIDO REPETIR ESTOS MISMOS PASOS O DIBUJOS/OBJETOS EXACTOS):
 - ${recentHistoryList}
 
-REGLAS OBLIGATORIAS:
-1. PROHIBIDO repetir el objeto final ("${currentMission.targetItem}") ni los mismos pasos de la misión anterior. Inventa movimientos físicos distintos y pide un objeto casero diferente.
-2. Usa cantidades cercanas a ${targetReps} en los ejercicios de cada paso (ej: en lugar de pedir solo 2 o 3 saltos, pide ${targetReps} saltos, ${targetReps} pasos, ${targetReps} toques o ${targetReps + 4} segundos).
-3. El paso final (Paso ${targetSteps}) SIEMPRE debe pedir traer el nuevo objeto o mostrar la prueba frente a la cámara de la base.
-4. La lista "steps" debe tener EXACTAMENTE ${targetSteps} elementos.
+REGLAS PARA LAS OPCIONES DE SELECCIÓN MÚLTIPLE ("distractors"):
+Para cada paso debes incluir un array "distractors" con EXACTAMENTE 3 opciones falsas que sean MUY PARECIDAS al texto verdadero ("text") de ese paso, cambiando sutilmente números (ej. ${targetReps} por ${targetReps + 2} o ${Math.max(2, targetReps - 2)}), colores, formas o partes del cuerpo, para que el niño tenga que recordar con precisión cuál era la instrucción verdadera.
 
 Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
 {
-  "title": "Nombre creativo y nuevo de operación espía",
+  "title": "Nombre creativo de operación espía acorde a ${themeObj.label}",
   "category": "IA • ${themeObj.label.replace(/^[^\s]+\s/, '')} (${targetReps}x)",
-  "targetItem": "descripción breve del nuevo objeto o resultado a mostrar ante la cámara al final",
+  "targetItem": "descripción breve de lo que debe mostrar ante la cámara al final acorde a ${themeObj.label}",
   "steps": [
 ${stepsTemplateExample}
   ]
@@ -1134,7 +1075,7 @@ ${stepsTemplateExample}
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           responseMimeType: "application/json",
-          temperature: 1.0
+          temperature: 0.95
         }
       });
 
@@ -1142,11 +1083,15 @@ ${stepsTemplateExample}
       const missionJson = parseCleanJson(rawText);
 
       if (missionJson.steps && Array.isArray(missionJson.steps) && missionJson.steps.length > 0) {
-        const normalizedSteps = missionJson.steps.map((s, idx) => ({
-          id: idx + 1,
-          text: s.text || `Paso secreto ${idx + 1}`,
-          icon: s.icon || "🕵️‍♀️"
-        }));
+        const normalizedSteps = missionJson.steps.map((s, idx) => {
+          const stepText = s.text || `Paso secreto ${idx + 1}`;
+          return {
+            id: idx + 1,
+            text: stepText,
+            icon: s.icon || "🕵️‍♀️",
+            options: generateTrickyOptions(stepText, s.distractors)
+          };
+        });
         const newMission = {
           ...missionJson,
           isAI: true,
@@ -1163,14 +1108,14 @@ ${stepsTemplateExample}
         setCurrentMission(newMission);
         resetMissionFlow(normalizedSteps.length, targetReps);
         SpyAudio.playSuccess();
-        speakText(`¡Nueva misión secreta de ${normalizedSteps.length} pasos con intensidad ${targetReps}! ${newMission.title}.`);
+        speakText(`¡Nueva misión de ${themeObj.label.replace(/^[^\s]+\s/, '')} con ${normalizedSteps.length} pasos! ${newMission.title}.`);
       } else {
         throw new Error("El formato de pasos devuelto por la IA no fue válido.");
       }
     } catch (e) {
       console.warn("Fallo al generar misión con IA:", e);
-      setAiErrorMsg(`Aviso IA (${e.message}). Se generó una misión dinámica nueva de ${targetSteps} pasos.`);
-      const procMission = buildUniqueProceduralMission(targetSteps, missionHistory, targetReps);
+      setAiErrorMsg(`Aviso IA (${e.message}). Se generó una misión dinámica de ${themeObj.label}.`);
+      const procMission = buildUniqueProceduralMission(targetSteps, missionHistory, targetReps, activeThemeId);
       setMissionHistory(prev => [...prev.slice(-15), `${procMission.title} (${procMission.targetItem})`]);
       setCurrentMission(procMission);
       resetMissionFlow(procMission.steps.length, targetReps);
@@ -1184,7 +1129,7 @@ ${stepsTemplateExample}
   useEffect(() => {
     if (!didInitialAIFetch.current && apiKey.trim()) {
       didInitialAIFetch.current = true;
-      generateNewAIMission(difficultySteps, selectedTheme, apiKey);
+      generateNewAIMission(difficultySteps, selectedTheme, apiKey, actionReps);
     }
   }, []);
 
@@ -1193,13 +1138,14 @@ ${stepsTemplateExample}
     const nextStepNum = currentMission.steps.length + 1;
     if (nextStepNum > 12) return;
     setDifficultySteps(nextStepNum);
-    await generateNewAIMission(nextStepNum, selectedTheme);
+    await generateNewAIMission(nextStepNum, selectedTheme, apiKey, actionReps);
   };
 
   const resetMissionFlow = (stepsCount = difficultySteps, repsCount = actionReps) => {
     setPhase('listen');
-    setRepeatTaps(0);
-    repeatTapsRef.current = 0;
+    setQuizStepIndex(0);
+    setWrongOptionSelected(null);
+    setQuizFeedbackMsg("");
     const perStepSeconds = 25 + Math.round(repsCount * 1.5);
     setTimerSeconds(Math.max(60, stepsCount * perStepSeconds));
     setIsTimerActive(false);
@@ -1224,6 +1170,8 @@ ${stepsTemplateExample}
     !currentMission.isCleanupMission &&
     usedObjects.length >= 2 &&
     (stepsSinceCleanup >= CLEANUP_STEPS_THRESHOLD || usedObjects.length >= 3);
+
+  const activeQuizStep = currentMission.steps[quizStepIndex] || currentMission.steps[0];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-400 selection:text-black">
@@ -1366,7 +1314,7 @@ ${stepsTemplateExample}
                 <span>Largo / Repeticiones dentro de cada paso: <strong className="text-amber-300 text-sm">{actionReps}x</strong></span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Define si cada paso pide acciones cortas (ej: 3 saltos) o largas (ej: {actionReps} saltos, {actionReps} pasos o {actionReps + 4}s de equilibrio).
+                Define si cada paso pide acciones cortas (ej: 3x) o largas (ej: {actionReps} dibujos/saltos/bloques).
               </p>
             </div>
 
@@ -1449,19 +1397,19 @@ ${stepsTemplateExample}
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] font-mono uppercase tracking-wider text-purple-300 font-bold mr-1 flex items-center gap-1">
                 <Wand2 className="w-3.5 h-3.5" />
-                Temática IA:
+                Temática Obligatoria:
               </span>
               {AI_THEMES.map(theme => (
                 <button
                   key={theme.id}
                   onClick={() => {
                     setSelectedTheme(theme.id);
-                    generateNewAIMission(difficultySteps, theme.id);
+                    generateNewAIMission(difficultySteps, theme.id, apiKey, actionReps);
                   }}
                   disabled={isAnalyzingAI}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all border ${
                     selectedTheme === theme.id
-                      ? 'bg-purple-950/90 border-purple-500 text-purple-200 shadow-sm'
+                      ? 'bg-purple-600 border-purple-400 text-white shadow-md shadow-purple-900/50 scale-105'
                       : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                   }`}
                 >
@@ -1476,14 +1424,14 @@ ${stepsTemplateExample}
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') generateNewAIMission(difficultySteps, selectedTheme);
+                  if (e.key === 'Enter') generateNewAIMission(difficultySteps, selectedTheme, apiKey, actionReps);
                 }}
-                placeholder="Opcional: escribe qué quieres en la misión (ej: 'con cojines en la sala', 'buscar algo verde y un libro')..."
+                placeholder="Opcional: escribe qué quieres en la misión (ej: 'dibujar una casa y un árbol', 'con cojines en la sala')..."
                 className="flex-1 bg-slate-950 border border-slate-800 focus:border-purple-500 focus:outline-none rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-slate-500"
               />
 
               <button
-                onClick={() => generateNewAIMission(difficultySteps, selectedTheme)}
+                onClick={() => generateNewAIMission(difficultySteps, selectedTheme, apiKey, actionReps)}
                 disabled={isAnalyzingAI}
                 className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-lg shadow-purple-900/40 disabled:opacity-50 transition-all shrink-0"
               >
@@ -1491,7 +1439,7 @@ ${stepsTemplateExample}
                 <span>
                   {isAnalyzingAI
                     ? `Inventando ${difficultySteps} instrucciones...`
-                    : `Inventar Nueva Misión IA (${difficultySteps} Pasos)`}
+                    : `Inventar Nueva Misión (${difficultySteps} Pasos)`}
                 </span>
               </button>
             </div>
@@ -1517,7 +1465,7 @@ ${stepsTemplateExample}
           <div className={`p-2.5 rounded-xl border transition-all ${
             phase === 'repeat' ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md shadow-amber-950' : 'bg-slate-900/40 border-slate-800 text-slate-500'
           }`}>
-            <span>2. Repetir (Voz)</span>
+            <span>2. Test Memoria</span>
           </div>
           <div className={`p-2.5 rounded-xl border transition-all ${
             phase === 'action' ? 'bg-indigo-950/80 border-indigo-500 text-indigo-300 shadow-md shadow-indigo-950' : 'bg-slate-900/40 border-slate-800 text-slate-500'
@@ -1548,10 +1496,10 @@ ${stepsTemplateExample}
                   transmisor gemini ia activo
                 </span>
                 <h3 className="text-xl sm:text-2xl font-black text-white pt-1">
-                  Inventando nueva misión secreta de {difficultySteps} pasos...
+                  Inventando nueva misión de {difficultySteps} pasos ({AI_THEMES.find(t => t.id === selectedTheme)?.label})...
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-400">
-                  El Cuartel General está diseñando instrucciones físicas nuevas que no se hayan repetido antes.
+                  Preparando pasos personalizados y las 4 opciones trampa para el test de memoria.
                 </p>
               </div>
             </div>
@@ -1585,7 +1533,7 @@ ${stepsTemplateExample}
 
                 <div className="flex items-center gap-2 self-start sm:self-auto">
                   <button
-                    onClick={() => generateNewAIMission(difficultySteps, selectedTheme)}
+                    onClick={() => generateNewAIMission(difficultySteps, selectedTheme, apiKey, actionReps)}
                     disabled={isAnalyzingAI}
                     title="Inventar otra misión distinta ahora"
                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-purple-300 text-xs font-bold transition-all disabled:opacity-50"
@@ -1607,10 +1555,10 @@ ${stepsTemplateExample}
               {/* Lista de Pasos Encadenados */}
               <div className="my-6 space-y-3">
                 {phase === 'repeat' && (
-                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-amber-950/40 border border-amber-500/30 text-xs text-amber-200">
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-amber-950/40 border border-amber-500/30 text-xs text-amber-200">
                     <span className="flex items-center gap-1.5 font-bold">
                       <Lock className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Modo Memoria Activa: Instrucciones ocultas para recordar sin leer</span>
+                      <span>Modo Memoria Activa: Los pasos por adivinar están borrosos para no leerlos</span>
                     </span>
                     <button
                       onClick={() => setPeekInstructions(p => !p)}
@@ -1624,14 +1572,19 @@ ${stepsTemplateExample}
 
                 {currentMission.steps.map((st, idx) => {
                   const isChecked = checkedSteps.includes(st.id);
-                  const isVoiceDetected = phase === 'repeat' && matchedStepIdsInRep.includes(st.id);
-                  const isBlurredForMemory = phase === 'repeat' && !peekInstructions;
+                  const isAlreadyRemembered = phase === 'repeat' && idx < quizStepIndex;
+                  const isCurrentQuizTarget = phase === 'repeat' && idx === quizStepIndex;
+                  // Se mantiene borroso durante la Fase 2 hasta que la niña adivine ese paso (o si activan Ver Pista)
+                  const isBlurredForMemory = phase === 'repeat' && !peekInstructions && !isAlreadyRemembered;
+
                   return (
                     <div
                       key={st.id}
                       className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
-                        isVoiceDetected
-                          ? 'bg-amber-950/40 border-amber-400 shadow-md shadow-amber-950/30'
+                        isAlreadyRemembered
+                          ? 'bg-emerald-950/30 border-emerald-500/60 shadow-md'
+                          : isCurrentQuizTarget
+                          ? 'bg-amber-950/30 border-amber-400 ring-2 ring-amber-400/20'
                           : phase === 'action'
                           ? 'bg-slate-800/70 border-slate-700 hover:border-slate-500'
                           : 'bg-slate-900/60 border-slate-800'
@@ -1644,16 +1597,21 @@ ${stepsTemplateExample}
                           {st.icon || idx + 1}
                         </div>
                         <div>
-                          <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold flex items-center gap-2">
+                          <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold flex flex-wrap items-center gap-2">
                             <span>Paso {idx + 1} de {currentMission.steps.length}</span>
-                            {isVoiceDetected && (
-                              <span className="text-[10px] bg-amber-400 text-slate-950 px-2 py-0.2 rounded-full font-black">
-                                🎙️ ¡Recordado en voz alta!
+                            {isAlreadyRemembered && (
+                              <span className="text-[10px] bg-emerald-400 text-slate-950 px-2 py-0.2 rounded-full font-black">
+                                ✅ ¡Recordado con éxito!
+                              </span>
+                            )}
+                            {isCurrentQuizTarget && (
+                              <span className="text-[10px] bg-amber-400 text-slate-950 px-2 py-0.2 rounded-full font-black animate-pulse">
+                                👇 ¿Cuál era este paso? Elige abajo
                               </span>
                             )}
                           </div>
                           <div className={`text-base font-bold text-white transition-all duration-300 ${
-                            isBlurredForMemory ? 'blur-md select-none opacity-65' : ''
+                            isBlurredForMemory ? 'blur-md select-none opacity-60' : ''
                           }`}>
                             {st.text}
                           </div>
@@ -1688,10 +1646,10 @@ ${stepsTemplateExample}
                   <div className="text-left">
                     <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
                       <Eye className="w-4 h-4" />
-                      Paso 1: Memoriza la secuencia de {currentMission.steps.length} pasos
+                      Paso 1: Lee o escucha con mucha atención los {currentMission.steps.length} pasos
                     </h4>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Léele o haz clic en "Escuchar Instrucciones". Aún no debe pararse de su asiento.
+                      Fíjate bien en los números, colores y detalles. En el siguiente paso se ocultarán y tendrás que elegir la opción correcta entre 4 parecidas.
                     </p>
                   </div>
 
@@ -1699,90 +1657,92 @@ ${stepsTemplateExample}
                     onClick={() => {
                       SpyAudio.playSuccess();
                       setPhase('repeat');
-                      speakText(`¡Muy bien! Ahora activa el micrófono y repite los ${currentMission.steps.length} pasos en voz alta tres veces.`);
+                      speakText(`¡Hora del reto de memoria! Selecciona cuál era el Paso 1 entre las cuatro opciones.`);
                     }}
-                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 shrink-0"
                   >
-                    <span>¡Instrucciones Escuchadas!</span>
+                    <span>¡Listo! Ocultar y Hacer Test</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               )}
 
-              {/* ================= FASE 2: REPETIR EN VOZ ALTA CON RECONOCIMIENTO DE VOZ ================= */}
-              {phase === 'repeat' && (
-                <div className="p-5 rounded-2xl bg-amber-950/30 border-2 border-dashed border-amber-500/60 space-y-5 text-center">
-                  <div className="max-w-lg mx-auto space-y-1">
-                    <span className="text-3xl">🎙️🗣️</span>
-                    <h4 className="text-base sm:text-lg font-black text-amber-300">
-                      ¡Reconocimiento de Voz de Espía ({repeatTaps}/3 Repeticiones)!
-                    </h4>
-                    <p className="text-xs text-amber-200/80">
-                      Activa el micrófono y dile a la niña que repita los {currentMission.steps.length} pasos en voz alta. El radar detectará su voz automáticamente.
-                    </p>
-                  </div>
-
-                  {/* Controles de Grabación y Evaluación de Voz con IA */}
-                  <div className="flex flex-col items-center gap-3">
-                    {!isListeningVoice ? (
-                      <button
-                        onClick={startVoiceRecognition}
-                        disabled={isEvaluatingVoice}
-                        className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:from-cyan-300 hover:to-teal-300 text-slate-950 font-black text-sm shadow-xl shadow-cyan-500/20 flex items-center gap-3 transition-all disabled:opacity-50"
-                      >
-                        <Mic className="w-5 h-5" />
-                        <span>
-                          {isEvaluatingVoice
-                            ? 'Analizando tu voz con Gemini IA...'
-                            : '🎙️ Empezar a Hablar (Grabar Repetición)'}
-                        </span>
-                      </button>
-                    ) : (
-                      <div className="flex flex-wrap items-center justify-center gap-3">
-                        <button
-                          onClick={finishAndEvaluateVoice}
-                          className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/30 flex items-center gap-2.5 animate-bounce"
-                        >
-                          <CheckCircle2 className="w-5 h-5" />
-                          <span>✅ ¡Ya lo dije! Evaluar mi Voz con IA</span>
-                        </button>
-
-                        <button
-                          onClick={cleanupAudioRecording}
-                          className="px-4 py-3 rounded-2xl bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 font-bold text-xs flex items-center gap-1.5"
-                        >
-                          <MicOff className="w-4 h-4" />
-                          <span>Cancelar</span>
-                        </button>
+              {/* ================= FASE 2: VERIFICACIÓN POR SELECCIÓN SIMPLE (4 OPCIONES PARECIDAS POR PASO) ================= */}
+              {phase === 'repeat' && activeQuizStep && (
+                <div className="p-5 sm:p-6 rounded-3xl bg-amber-950/25 border-2 border-amber-500/50 space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/20 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 font-black flex items-center justify-center text-sm shadow">
+                        {Math.min(quizStepIndex + 1, currentMission.steps.length)}/{currentMission.steps.length}
                       </div>
-                    )}
-
-                    {/* Estado y Transcripción de lo que escuchó la IA */}
-                    {(isListeningVoice || isEvaluatingVoice || liveTranscript || voiceStatusMsg) && (
-                      <div className="w-full max-w-xl p-4 rounded-2xl bg-slate-950/90 border border-slate-800 text-left space-y-2">
-                        <div className="flex items-center justify-between text-[11px] font-mono text-cyan-400">
-                          <span>{voiceStatusMsg || "🎙️ Radar de voz activo"}</span>
-                          <span>Pasos recordados: {matchedStepIdsInRep.length}/{currentMission.steps.length}</span>
-                        </div>
-                        {liveTranscript && (
-                          <div className="text-xs sm:text-sm text-slate-200 italic">
-                            Lo que escuchó el radar: "{liveTranscript}"
-                          </div>
-                        )}
+                      <div className="text-left">
+                        <h4 className="text-sm sm:text-base font-black text-amber-300 flex items-center gap-1.5">
+                          <HelpCircle className="w-4 h-4" />
+                          <span>¿Cuál era exactamente el PASO {Math.min(quizStepIndex + 1, currentMission.steps.length)}?</span>
+                        </h4>
+                        <p className="text-xs text-amber-200/80">
+                          Cuidado con las opciones trampa: lee o escucha las 4 opciones y selecciona la verdadera.
+                        </p>
                       </div>
-                    )}
+                    </div>
 
-                    {/* Botón manual de respaldo / confirmación rápida */}
-                    <div className="pt-1 flex flex-wrap items-center justify-center gap-3">
-                      <button
-                        onClick={() => registerCompletedRepetition('manual')}
-                        className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center gap-2 transition-all"
-                      >
-                        <Sparkles className="w-4 h-4" />
-                        <span>Sumar Repetición Manual ({repeatTaps}/3)</span>
-                      </button>
+                    {/* Indicador de pasos completados en el quiz */}
+                    <div className="flex items-center gap-1.5">
+                      {currentMission.steps.map((s, idx) => (
+                        <div
+                          key={s.id}
+                          className={`h-2.5 w-7 rounded-full transition-all ${
+                            idx < quizStepIndex
+                              ? 'bg-emerald-400'
+                              : idx === quizStepIndex
+                              ? 'bg-amber-400 animate-pulse'
+                              : 'bg-slate-800'
+                          }`}
+                        />
+                      ))}
                     </div>
                   </div>
+
+                  {/* Cuadrícula de 4 Opciones Parecidas */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {(activeQuizStep.options || generateTrickyOptions(activeQuizStep.text)).map((optionText, optIdx) => {
+                      const letters = ['A', 'B', 'C', 'D'];
+                      const isWrongClicked = wrongOptionSelected === optionText;
+                      return (
+                        <button
+                          key={optIdx}
+                          onClick={() => handleSelectQuizOption(optionText)}
+                          className={`p-4 rounded-2xl border text-left transition-all flex items-start gap-3 group ${
+                            isWrongClicked
+                              ? 'bg-rose-950/60 border-rose-500 text-rose-200'
+                              : 'bg-slate-950/90 hover:bg-slate-900 border-slate-700 hover:border-amber-400 text-slate-100 shadow-md'
+                          }`}
+                        >
+                          <span className={`w-7 h-7 rounded-lg font-mono font-black text-xs flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                            isWrongClicked
+                              ? 'bg-rose-500 text-white'
+                              : 'bg-slate-800 group-hover:bg-amber-400 group-hover:text-slate-950 text-amber-300'
+                          }`}>
+                            {letters[optIdx] || optIdx + 1}
+                          </span>
+                          <span className="text-xs sm:text-sm font-bold leading-snug">
+                            {optionText}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Mensaje de retroalimentación del Quiz */}
+                  {quizFeedbackMsg && (
+                    <div className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 ${
+                      wrongOptionSelected
+                        ? 'bg-rose-950/50 border-rose-500/50 text-rose-200'
+                        : 'bg-emerald-950/50 border-emerald-500/50 text-emerald-200'
+                    }`}>
+                      <span>{quizFeedbackMsg}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1878,7 +1838,7 @@ ${stepsTemplateExample}
                         </div>
                         <div className="w-16 h-16 border-2 border-dashed border-cyan-400/70 rounded-xl mx-auto opacity-75"></div>
                         <div className="text-center text-[11px] text-cyan-300 font-mono bg-black/60 py-1 rounded">
-                          Centra aquí el objeto o señal solicitada
+                          Centra aquí el dibujo, objeto o señal solicitada
                         </div>
                       </div>
                     )}
@@ -1931,7 +1891,7 @@ ${stepsTemplateExample}
                   <p className="text-sm text-slate-300 max-w-md mx-auto">
                     {currentMission.isCleanupMission
                       ? '¡Todos los objetos de las actividades anteriores fueron devueltos a su lugar con éxito!'
-                      : `Tu hija escuchó, repitió en voz alta y ejecutó las ${currentMission.steps.length} instrucciones en el espacio físico.`}
+                      : `Tu hija memorizó con precisión los detalles y ejecutó las ${currentMission.steps.length} instrucciones en el mundo real.`}
                   </p>
 
                   <div className="inline-flex items-center gap-2 bg-emerald-900/60 border border-emerald-600/60 px-4 py-2 rounded-xl text-emerald-300 font-bold text-sm">
@@ -1984,7 +1944,7 @@ ${stepsTemplateExample}
             <span>Por qué funciona este método en la vida real:</span>
           </div>
           <p>
-            Al forzar a la niña a <strong>repetir la orden en voz alta en el micrófono antes de moverse</strong>, transformamos una instrucción externa en <em>habla subvocal autodirigida</em>. Además, las misiones periódicas de recolección cierran el ciclo ejecutivo enseñándole a dejar su espacio en orden.
+            Al ocultar las instrucciones y presentar <strong>4 opciones muy parecidas por paso</strong> (con números, colores o acciones sutilmente cambiadas), el cerebro debe discriminar los detalles exactos en la memoria operativa antes de pasar a la acción física.
           </p>
         </footer>
 
