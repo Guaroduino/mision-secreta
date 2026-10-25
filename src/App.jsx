@@ -89,8 +89,68 @@ const AI_THEMES = [
   }
 ];
 
-// Modelo fijo: usar siempre gemini-3.8-flash
-const GEMINI_MODEL = 'gemini-3.8-flash';
+// Modelos retirados o bloqueados para cuentas nuevas (NUNCA usarlos en la rotación)
+const RETIRED_MODELS_BLACKLIST = new Set([
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-flash-exp',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
+  'gemini-1.5-pro',
+  'gemini-pro',
+  'gemini-pro-vision'
+]);
+
+function isModelRetiredOrBlocked(modelId = '') {
+  const clean = modelId.replace(/^models\//, '').toLowerCase();
+  if (RETIRED_MODELS_BLACKLIST.has(clean)) return true;
+  if (clean.startsWith('gemini-1.') || clean.startsWith('gemini-2.0')) return true;
+  if (clean === 'gemini-2.5-flash' || clean.startsWith('gemini-2.5-flash-preview')) return true;
+  if (
+    clean.includes('embedding') ||
+    clean.includes('imagen') ||
+    clean.includes('veo') ||
+    clean.includes('aqa') ||
+    clean.includes('tts') ||
+    clean.includes('audio') ||
+    clean.includes('robotics') ||
+    clean.includes('computer-use') ||
+    clean.includes('learnlm')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+// Orden de prioridad para maximizar la CUOTA GRATIS diaria en Google AI Studio:
+// 1. Modelos Flash-Lite activos (suelen tener 500 a 1,500 RPD gratis separados de los 20 RPD de Flash estándar)
+// 2. Modelos Gemma 3 27B / 12B activos (hasta 14,400 RPD gratis en Google AI Studio)
+// 3. gemini-3.8-flash y otros modelos Gemini 3.x Flash activos (20 RPD cada uno)
+function scoreModelForFreeQuota(modelId = '') {
+  const clean = modelId.replace(/^models\//, '').toLowerCase();
+  if (clean === 'gemini-3.8-flash-lite' || clean === 'gemini-3.8-flash-lite-preview') return 1000;
+  if (clean.startsWith('gemini-3') && clean.includes('flash-lite')) return 950;
+  if (clean === 'gemini-2.5-flash-lite') return 900;
+  if (clean.includes('flash-lite')) return 850;
+  if (clean === 'gemini-3.8-flash') return 800;
+  if (clean.startsWith('gemini-3') && clean.includes('flash')) return 750;
+  if (clean === 'gemma-3-27b-it') return 700;
+  if (clean === 'gemma-3-12b-it') return 650;
+  if (clean.startsWith('gemma-3')) return 600;
+  if (clean.startsWith('gemini-3')) return 500;
+  return 100;
+}
+
+const DEFAULT_FALLBACK_MODELS = [
+  'gemini-3.8-flash-lite',
+  'gemini-3.1-flash-lite-preview',
+  'gemini-2.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-3.1-flash-preview',
+  'gemma-3-27b-it'
+];
 
 // Mezclar arreglo aleatoriamente
 function shuffleArray(arr) {
@@ -399,15 +459,22 @@ const CLEANUP_STEPS_THRESHOLD = 9;
 const MIN_STUDY_SECONDS = 80;
 
 export default function App() {
-  // Manejo de Gemini API Key (Modelo fijo: gemini-3.8-flash)
+  // Manejo de Gemini API Key y Rotación Inteligente Multi-Modelo de Alta Cuota Gratis
   const [apiKey, setApiKey] = useState(() => {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('gemini_model');
       return localStorage.getItem('gemini_api_key') || "";
     }
     return "";
   });
-  const activeModel = GEMINI_MODEL;
+  const [preferredModelMode, setPreferredModelMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('gemini_model_mode');
+      if (saved && !isModelRetiredOrBlocked(saved)) return saved;
+    }
+    return 'auto';
+  });
+  const [activeModel, setActiveModel] = useState('gemini-3.8-flash-lite');
+  const [availableModels, setAvailableModels] = useState(DEFAULT_FALLBACK_MODELS);
   const [inputKey, setInputKey] = useState("");
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [keyTesting, setKeyTesting] = useState(false);
@@ -433,6 +500,7 @@ export default function App() {
     buildUniqueProceduralMission(3, [], 8, 'sorpresa')
   );
   const [aiErrorMsg, setAiErrorMsg] = useState(null);
+  const [queuedMissionsCount, setQueuedMissionsCount] = useState(0);
   
   // Flujo del protocolo: 'listen' -> 'repeat' (quiz de 4 opciones por paso) -> 'action' -> 'verify' -> 'success'
   const [phase, setPhase] = useState('listen');
@@ -453,37 +521,198 @@ export default function App() {
   const [aiFeedback, setAiFeedback] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
 
-  // Referencias DOM
+  // Referencias DOM y Cachés de Modelos / Cola de Misiones IA (3x misiones por llamada)
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
   const didInitialAIFetch = useRef(false);
+  const discoveredModelsCacheRef = useRef({ key: '', models: [] });
+  const retiredModelsRef = useRef(new Set(RETIRED_MODELS_BLACKLIST));
+  const quotaExhaustedModelsRef = useRef(new Map()); // modelId -> timestamp
+  const aiMissionQueueRef = useRef([]); // [{ keySignature, mission }]
 
   useEffect(() => {
     if (showKeyModal) {
       setInputKey(apiKey);
       setKeyTestStatus(null);
+      if (apiKey.trim()) {
+        discoverActiveModels(apiKey.trim());
+      }
     }
   }, [showKeyModal, apiKey]);
 
-  // Llamada directa y exclusiva a gemini-3.8-flash
-  const callGeminiWithFallback = async (key, payload) => {
-    const cleanKey = key.trim();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${cleanKey}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      const errMsg = errorData.error?.message || `Error HTTP ${res.status}`;
-      throw new Error(errMsg);
+  // Descubre dinámicamente los modelos activos de la cuenta consultando /v1beta/models (0 costo de cuota)
+  const discoverActiveModels = async (rawKey) => {
+    const cleanKey = rawKey.trim();
+    if (!cleanKey) return DEFAULT_FALLBACK_MODELS;
+    if (
+      discoveredModelsCacheRef.current.key === cleanKey &&
+      discoveredModelsCacheRef.current.models.length > 0
+    ) {
+      return discoveredModelsCacheRef.current.models;
     }
 
-    const data = await res.json();
-    return { data, usedModel: GEMINI_MODEL };
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`
+      );
+      if (!res.ok) return DEFAULT_FALLBACK_MODELS;
+      const data = await res.json();
+      const rawList = Array.isArray(data.models) ? data.models : [];
+
+      const activeIds = rawList
+        .filter(m => {
+          const methods = m.supportedGenerationMethods || [];
+          return methods.includes('generateContent');
+        })
+        .map(m => String(m.name || '').replace(/^models\//, ''))
+        .filter(id => id && !isModelRetiredOrBlocked(id) && !retiredModelsRef.current.has(id));
+
+      // Combinar con nuestra lista curada de alta cuota y ordenar por mayor cuota gratuita
+      const combined = Array.from(new Set([...activeIds, ...DEFAULT_FALLBACK_MODELS]))
+        .filter(id => !isModelRetiredOrBlocked(id) && !retiredModelsRef.current.has(id))
+        .sort((a, b) => scoreModelForFreeQuota(b) - scoreModelForFreeQuota(a));
+
+      if (combined.length > 0) {
+        discoveredModelsCacheRef.current = { key: cleanKey, models: combined };
+        setAvailableModels(combined);
+        return combined;
+      }
+    } catch (e) {
+      console.warn("No se pudo listar /v1beta/models, usando lista activa por defecto:", e);
+    }
+    return DEFAULT_FALLBACK_MODELS;
+  };
+
+  // Rotación inteligente entre modelos activos con alta cuota gratuita (Flash-Lite -> 3.8-Flash -> Gemma-3-27B)
+  // Si un modelo agota sus 20 peticiones diarias (429 / quota), salta automáticamente al siguiente modelo activo con cuota disponible.
+  const callGeminiWithFallback = async (key, payload, overrideMode = preferredModelMode) => {
+    const cleanKey = key.trim();
+    const discovered = await discoverActiveModels(cleanKey);
+
+    // Determinar si el payload incluye imagen (visión multimodal)
+    const hasInlineImage = JSON.stringify(payload).includes('"inlineData"');
+
+    // Construir orden de candidatos activos
+    let candidates = [...discovered];
+    if (overrideMode && overrideMode !== 'auto' && !isModelRetiredOrBlocked(overrideMode)) {
+      candidates = [overrideMode, ...candidates.filter(m => m !== overrideMode)];
+    }
+
+    // Filtrar modelos retirados y poner al final los que hayan dado 429 en los últimos 10 minutos
+    const now = Date.now();
+    const freshCandidates = [];
+    const recentlyExhausted = [];
+
+    for (const modelId of candidates) {
+      if (isModelRetiredOrBlocked(modelId) || retiredModelsRef.current.has(modelId)) continue;
+      const exhaustedAt = quotaExhaustedModelsRef.current.get(modelId);
+      if (exhaustedAt && now - exhaustedAt < 10 * 60 * 1000) {
+        recentlyExhausted.push(modelId);
+      } else {
+        freshCandidates.push(modelId);
+      }
+    }
+
+    const finalOrder = [...freshCandidates, ...recentlyExhausted];
+    const errorsSummary = [];
+
+    for (const modelId of finalOrder) {
+      const isGemmaModel = modelId.toLowerCase().startsWith('gemma-');
+      // Ajustar payload si es un modelo Gemma (Gemma no admite responseMimeType: application/json)
+      const adaptedPayload = isGemmaModel && payload.generationConfig?.responseMimeType
+        ? {
+            ...payload,
+            generationConfig: {
+              ...payload.generationConfig,
+              responseMimeType: undefined
+            }
+          }
+        : payload;
+
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${cleanKey}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(adaptedPayload)
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setActiveModel(modelId);
+          return { data, usedModel: modelId };
+        }
+
+        const errorData = await res.json().catch(() => ({}));
+        const errMsg = errorData.error?.message || `Error HTTP ${res.status}`;
+        const lowerMsg = errMsg.toLowerCase();
+
+        // Si la API Key en sí es inválida, detener inmediatamente
+        if (lowerMsg.includes('api_key_invalid') || lowerMsg.includes('api key not valid')) {
+          throw new Error('La API Key ingresada no es válida. Verifica que esté bien copiada de Google AI Studio.');
+        }
+
+        // Si el modelo está retirado o no existe (404 / no longer available), ponerlo en lista negra permanente y probar el siguiente
+        if (
+          res.status === 404 ||
+          lowerMsg.includes('no longer available') ||
+          lowerMsg.includes('not found') ||
+          lowerMsg.includes('not supported') ||
+          (hasInlineImage && isGemmaModel)
+        ) {
+          retiredModelsRef.current.add(modelId);
+          continue;
+        }
+
+        // Si el modelo alcanzó su límite de cuota gratuita (ej. 20 RPD en gemini-3.8-flash), marcarlo y saltar al siguiente modelo activo (ej. flash-lite o gemma-3-27b-it)
+        if (
+          res.status === 429 ||
+          lowerMsg.includes('quota') ||
+          lowerMsg.includes('rate limit') ||
+          lowerMsg.includes('resource_exhausted') ||
+          lowerMsg.includes('exceeded')
+        ) {
+          quotaExhaustedModelsRef.current.set(modelId, Date.now());
+          errorsSummary.push(`${modelId}: cuota agotada`);
+          continue;
+        }
+
+        // Si falló por responseMimeType en algún modelo preview, reintentar sin responseMimeType
+        if (res.status === 400 && adaptedPayload.generationConfig?.responseMimeType) {
+          const retryPayload = {
+            ...adaptedPayload,
+            generationConfig: {
+              ...adaptedPayload.generationConfig,
+              responseMimeType: undefined
+            }
+          };
+          const retryRes = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(retryPayload)
+          });
+          if (retryRes.ok) {
+            const retryData = await retryRes.json();
+            setActiveModel(modelId);
+            return { data: retryData, usedModel: modelId };
+          }
+        }
+
+        errorsSummary.push(`${modelId}: ${errMsg}`);
+      } catch (networkOrAuthErr) {
+        if (networkOrAuthErr.message.includes('API Key ingresada no es válida')) {
+          throw networkOrAuthErr;
+        }
+        errorsSummary.push(`${modelId}: ${networkOrAuthErr.message}`);
+      }
+    }
+
+    throw new Error(
+      errorsSummary.length > 0
+        ? `Se probó rotación en ${finalOrder.length} modelos activos (${errorsSummary.slice(0, 2).join(' | ')})`
+        : 'No se encontró un modelo con cuota disponible en este momento.'
+    );
   };
 
   // Rangos de Espía
@@ -496,7 +725,7 @@ export default function App() {
   };
   const currentRank = getRank(xp);
 
-  // Probar la API Key
+  // Probar la API Key y descubrir todos los modelos con cuota libre
   const handleTestKey = async (keyToTest = inputKey) => {
     const key = keyToTest.trim();
     if (!key) {
@@ -508,15 +737,16 @@ export default function App() {
     SpyAudio.playRadar();
 
     try {
+      const modelsFound = await discoverActiveModels(key);
       const { usedModel } = await callGeminiWithFallback(
         key,
         { contents: [{ parts: [{ text: "Responde únicamente: 'CONEXION_EXITOSA'" }] }] },
-        activeModel
+        preferredModelMode
       );
 
       setKeyTestStatus({
         success: true,
-        message: `¡Conexión exitosa con Google Gemini (modelo activo: ${usedModel})!`
+        message: `¡Conectado! Modelo activo con cuota disponible: ${usedModel} (${modelsFound.length} modelos activos detectados para rotación).`
       });
       SpyAudio.playSuccess();
       return true;
@@ -529,20 +759,20 @@ export default function App() {
     }
   };
 
-  // Guardar la Key y generar primera misión con IA inmediatamente
+  // Guardar la Key y generar lote de misiones con IA inmediatamente
   const handleSaveKey = () => {
     const cleanKey = inputKey.trim();
     setApiKey(cleanKey);
     if (saveToStorage) {
       localStorage.setItem('gemini_api_key', cleanKey);
-      localStorage.setItem('gemini_model', activeModel);
+      localStorage.setItem('gemini_model_mode', preferredModelMode);
     } else {
       localStorage.removeItem('gemini_api_key');
     }
     setShowKeyModal(false);
     SpyAudio.playSuccess();
     if (cleanKey) {
-      generateNewAIMission(difficultySteps, selectedTheme, cleanKey, actionReps);
+      generateNewAIMission(difficultySteps, selectedTheme, cleanKey, actionReps, true);
     }
   };
 
@@ -551,6 +781,8 @@ export default function App() {
     setApiKey("");
     setInputKey("");
     localStorage.removeItem('gemini_api_key');
+    aiMissionQueueRef.current = [];
+    setQueuedMissionsCount(0);
     setKeyTestStatus(null);
     SpyAudio.playAlarm();
   };
@@ -942,17 +1174,48 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
     }
   };
 
-  // Generador de Misiones e Instrucciones con Gemini IA (respetando estrictamente la temática y creando 4 opciones por paso)
+  // Normaliza un objeto de misión crudo devuelto por la IA
+  const normalizeAIMissionObject = (rawMission, usedModel, targetReps, themeObj) => {
+    if (!rawMission || !Array.isArray(rawMission.steps) || rawMission.steps.length === 0) {
+      return null;
+    }
+    const normalizedSteps = rawMission.steps.map((s, idx) => {
+      const stepText = s.text || `Paso secreto ${idx + 1}`;
+      return {
+        id: idx + 1,
+        text: stepText,
+        icon: s.icon || "🕵️‍♀️",
+        options: generateTrickyOptions(stepText, s.distractors)
+      };
+    });
+    return {
+      title: rawMission.title || `Operación ${themeObj.label.replace(/^[^\s]+\s/, '')}`,
+      category: rawMission.category || `IA • ${themeObj.label.replace(/^[^\s]+\s/, '')} (${targetReps}x)`,
+      targetItem: rawMission.targetItem || `tu resultado de ${themeObj.label}`,
+      isAI: true,
+      isCleanupMission: false,
+      actionReps: targetReps,
+      modelUsed: usedModel,
+      stepsCount: normalizedSteps.length,
+      steps: normalizedSteps
+    };
+  };
+
+  // Generador de Misiones e Instrucciones con Gemini IA
+  // AHORRO 3X DE CUOTA: Genera un paquete de 3 misiones distintas en 1 sola llamada API y guarda 2 en reserva instantánea.
   const generateNewAIMission = async (
     stepsToGenerate = difficultySteps,
     themeId = selectedTheme,
     overrideKey = apiKey,
-    repsToUse = actionReps
+    repsToUse = actionReps,
+    forceFreshBatch = false
   ) => {
     const targetSteps = typeof stepsToGenerate === 'number' ? stepsToGenerate : difficultySteps;
     const targetReps = typeof repsToUse === 'number' ? repsToUse : actionReps;
     const activeThemeId = typeof themeId === 'string' ? themeId : selectedTheme;
     const activeKeyToUse = (typeof overrideKey === 'string' ? overrideKey : apiKey).trim();
+    const themeObj = AI_THEMES.find(t => t.id === activeThemeId) || AI_THEMES[0];
+    const keySignature = `${targetSteps}_${targetReps}_${activeThemeId}_${customPrompt.trim().toLowerCase()}`;
 
     if (!activeKeyToUse) {
       const procMission = buildUniqueProceduralMission(targetSteps, missionHistory, targetReps, activeThemeId);
@@ -963,13 +1226,31 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
       return;
     }
 
+    // 1. Verificar si ya tenemos una misión IA lista en la cola de reserva para esta misma configuración (0 gasto de cuota)
+    if (!forceFreshBatch) {
+      const matchIndex = aiMissionQueueRef.current.findIndex(item => item.keySignature === keySignature);
+      if (matchIndex !== -1) {
+        const [picked] = aiMissionQueueRef.current.splice(matchIndex, 1);
+        setQueuedMissionsCount(aiMissionQueueRef.current.length);
+        const cachedMission = picked.mission;
+        setMissionHistory(prev => [
+          ...prev.slice(-15),
+          `${cachedMission.title} -> objeto: ${cachedMission.targetItem} -> pasos: ${cachedMission.steps.map(s => s.text).join('; ')}`
+        ]);
+        setCurrentMission(cachedMission);
+        resetMissionFlow(cachedMission.steps.length, targetReps);
+        SpyAudio.playSuccess();
+        speakText(`¡Nueva misión lista de ${themeObj.label.replace(/^[^\s]+\s/, '')} con ${cachedMission.steps.length} pasos! ${cachedMission.title}.`);
+        return;
+      }
+    }
+
     setIsAnalyzingAI(true);
     setIsGeneratingMission(true);
     setPhase('listen');
     setAiErrorMsg(null);
     SpyAudio.playRadar();
 
-    const themeObj = AI_THEMES.find(t => t.id === activeThemeId) || AI_THEMES[0];
     const randomSeedId = Math.floor(10000 + Math.random() * 90000);
 
     const recentHistoryList = [
@@ -983,32 +1264,32 @@ Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura:
 
     const stepsTemplateExample = Array.from({ length: targetSteps }, (_, idx) => {
       const isLast = idx === targetSteps - 1;
-      return `    {
-      "id": ${idx + 1},
-      "text": "${
-        isLast
-          ? `Paso final (${targetSteps}): mostrar ante la cámara el resultado u objeto de la temática ${themeObj.label}`
-          : `Paso ${idx + 1} cumpliendo estrictamente la temática ${themeObj.label} con intensidad/cantidad ~${targetReps}`
-      }",
-      "icon": "✨",
-      "distractors": [
-        "Opción trampa 1 MUY parecida al paso ${idx + 1} pero cambiando el número o el color",
-        "Opción trampa 2 MUY parecida al paso ${idx + 1} pero cambiando la figura, objeto o dirección",
-        "Opción trampa 3 MUY parecida al paso ${idx + 1} pero cambiando un detalle clave de la acción"
-      ]
-    }`;
+      return `        {
+          "id": ${idx + 1},
+          "text": "${
+            isLast
+              ? `Paso final (${targetSteps}): mostrar ante la cámara el resultado u objeto de la temática ${themeObj.label}`
+              : `Paso ${idx + 1} cumpliendo estrictamente la temática ${themeObj.label} con intensidad/cantidad ~${targetReps}`
+          }",
+          "icon": "✨",
+          "distractors": [
+            "Opción trampa 1 MUY parecida al paso ${idx + 1} pero cambiando el número o el color",
+            "Opción trampa 2 MUY parecida al paso ${idx + 1} pero cambiando la figura, objeto o dirección",
+            "Opción trampa 3 MUY parecida al paso ${idx + 1} pero cambiando un detalle clave de la acción"
+          ]
+        }`;
     }).join(',\n');
 
     const prompt = `Eres un diseñador experto en neuroeducación infantil y juegos de espías para entrenar la memoria operativa (memoria de trabajo) y el seguimiento de instrucciones secuenciales.
 
-ID de Misión Única: #${randomSeedId}
-CANTIDAD OBLIGATORIA DE PASOS: EXACTAMENTE ${targetSteps} pasos secuenciales (numerados del 1 al ${targetSteps}).
+Lote de Misiones Únicas: #${randomSeedId}
+CANTIDAD OBLIGATORIA DE PASOS POR MISIÓN: EXACTAMENTE ${targetSteps} pasos secuenciales (numerados del 1 al ${targetSteps}).
 INTENSIDAD / CANTIDADES DENTRO DE CADA PASO: ~${targetReps} repeticiones o elementos (por ejemplo: dibujar ${targetReps} figuras, dar ${targetReps} saltos, usar ${targetReps} bloques, contar hasta ${targetReps + 3}, etc.).
 
 ===================================================================
 TEMÁTICA OBLIGATORIA SELECCIONADA POR EL USUARIO: ${themeObj.label}
 REGLA DE TEMÁTICA: ${themeObj.prompt}${customUserRequest}
-¡IMPORTANTE!: TODOS los pasos de la misión y el objeto final DEBEN tratar directamente sobre esta temática (${themeObj.label}). No inventes pasos de otra temática distinta.
+¡IMPORTANTE!: TODOS los pasos de cada misión y el objeto final DEBEN tratar directamente sobre esta temática (${themeObj.label}). No inventes pasos de otra temática distinta.
 ===================================================================
 
 HISTORIAL DE MISIONES YA JUGADAS (PROHIBIDO REPETIR ESTOS MISMOS PASOS O DIBUJOS/OBJETOS EXACTOS):
@@ -1017,13 +1298,18 @@ HISTORIAL DE MISIONES YA JUGADAS (PROHIBIDO REPETIR ESTOS MISMOS PASOS O DIBUJOS
 REGLAS PARA LAS OPCIONES DE SELECCIÓN MÚLTIPLE ("distractors"):
 Para cada paso debes incluir un array "distractors" con EXACTAMENTE 3 opciones falsas que sean MUY PARECIDAS al texto verdadero ("text") de ese paso, cambiando sutilmente números (ej. ${targetReps} por ${targetReps + 2} o ${Math.max(2, targetReps - 2)}), colores, formas o partes del cuerpo, para que el niño tenga que recordar con precisión cuál era la instrucción verdadera.
 
+Para optimizar la cuota de la API, genera UN PAQUETE DE 3 MISIONES COMPLETAMENTE DIFERENTES ENTRE SÍ dentro del array "missions".
 Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
 {
-  "title": "Nombre creativo de operación espía acorde a ${themeObj.label}",
-  "category": "IA • ${themeObj.label.replace(/^[^\s]+\s/, '')} (${targetReps}x)",
-  "targetItem": "descripción breve de lo que debe mostrar ante la cámara al final acorde a ${themeObj.label}",
-  "steps": [
+  "missions": [
+    {
+      "title": "Nombre creativo de operación espía #1 acorde a ${themeObj.label}",
+      "category": "IA • ${themeObj.label.replace(/^[^\s]+\s/, '')} (${targetReps}x)",
+      "targetItem": "descripción breve de lo que debe mostrar ante la cámara al final acorde a ${themeObj.label}",
+      "steps": [
 ${stepsTemplateExample}
+      ]
+    }
   ]
 }`;
 
@@ -1037,35 +1323,39 @@ ${stepsTemplateExample}
       });
 
       const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      const missionJson = parseCleanJson(rawText);
+      const parsedJson = parseCleanJson(rawText);
 
-      if (missionJson.steps && Array.isArray(missionJson.steps) && missionJson.steps.length > 0) {
-        const normalizedSteps = missionJson.steps.map((s, idx) => {
-          const stepText = s.text || `Paso secreto ${idx + 1}`;
-          return {
-            id: idx + 1,
-            text: stepText,
-            icon: s.icon || "🕵️‍♀️",
-            options: generateTrickyOptions(stepText, s.distractors)
-          };
-        });
-        const newMission = {
-          ...missionJson,
-          isAI: true,
-          isCleanupMission: false,
-          actionReps: targetReps,
-          modelUsed: usedModel,
-          stepsCount: normalizedSteps.length,
-          steps: normalizedSteps
-        };
+      // Soportar tanto { missions: [...] } como un objeto único { title, steps: [...] }
+      const rawMissionsList = Array.isArray(parsedJson?.missions)
+        ? parsedJson.missions
+        : Array.isArray(parsedJson)
+        ? parsedJson
+        : parsedJson?.steps
+        ? [parsedJson]
+        : [];
+
+      const validMissions = rawMissionsList
+        .map(m => normalizeAIMissionObject(m, usedModel, targetReps, themeObj))
+        .filter(Boolean);
+
+      if (validMissions.length > 0) {
+        const [firstMission, ...extraMissions] = validMissions;
+
+        // Guardar las misiones extra (2 misiones adicionales gratis) en la cola de reserva
+        if (extraMissions.length > 0) {
+          const queueEntries = extraMissions.map(m => ({ keySignature, mission: m }));
+          aiMissionQueueRef.current = [...queueEntries, ...aiMissionQueueRef.current].slice(0, 12);
+          setQueuedMissionsCount(aiMissionQueueRef.current.length);
+        }
+
         setMissionHistory(prev => [
           ...prev.slice(-15),
-          `${newMission.title} -> objeto: ${newMission.targetItem} -> pasos: ${normalizedSteps.map(s => s.text).join('; ')}`
+          `${firstMission.title} -> objeto: ${firstMission.targetItem} -> pasos: ${firstMission.steps.map(s => s.text).join('; ')}`
         ]);
-        setCurrentMission(newMission);
-        resetMissionFlow(normalizedSteps.length, targetReps);
+        setCurrentMission(firstMission);
+        resetMissionFlow(firstMission.steps.length, targetReps);
         SpyAudio.playSuccess();
-        speakText(`¡Nueva misión de ${themeObj.label.replace(/^[^\s]+\s/, '')} con ${normalizedSteps.length} pasos! ${newMission.title}.`);
+        speakText(`¡Nueva misión de ${themeObj.label.replace(/^[^\s]+\s/, '')} con ${firstMission.steps.length} pasos! ${firstMission.title}.`);
       } else {
         throw new Error("El formato de pasos devuelto por la IA no fue válido.");
       }
@@ -1396,11 +1686,24 @@ ${stepsTemplateExample}
                 <Sparkles className={`w-4 h-4 ${isAnalyzingAI ? 'animate-spin' : ''}`} />
                 <span>
                   {isAnalyzingAI
-                    ? `Inventando ${difficultySteps} instrucciones...`
+                    ? `Inventando lote de misiones (${difficultySteps} Pasos)...`
                     : `Inventar Nueva Misión (${difficultySteps} Pasos)`}
                 </span>
               </button>
             </div>
+
+            {apiKey.trim() && (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-slate-400">
+                <span>
+                  🔄 Modo Alta Cuota Gratis activo: <strong className="text-emerald-400">{activeModel}</strong> (1 llamada = 3 misiones)
+                </span>
+                {queuedMissionsCount > 0 && (
+                  <span className="bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 px-2.5 py-0.5 rounded-full font-bold">
+                    ⚡ {queuedMissionsCount} {queuedMissionsCount === 1 ? 'misión IA lista en reserva' : 'misiones IA listas en reserva'} (0 gasto de cuota)
+                  </span>
+                )}
+              </div>
+            )}
 
             {aiErrorMsg && (
               <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-600/40 text-amber-200 text-xs flex items-center justify-between gap-2">
@@ -1992,10 +2295,33 @@ ${stepsTemplateExample}
               </div>
             </div>
 
-            {/* Modelo Activo Fijo */}
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs font-mono">
-              <span className="text-slate-400">Modelo IA configurado:</span>
-              <span className="text-emerald-400 font-bold">{GEMINI_MODEL}</span>
+            {/* Selector de Estrategia de Modelos Activos (Alta Cuota Gratis) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-mono">
+                <span className="text-slate-300 font-bold uppercase tracking-wider">Modelo / Estrategia de Cuota Gratis:</span>
+                <span className="text-emerald-400 font-bold">Activo: {activeModel}</span>
+              </div>
+              <select
+                value={preferredModelMode}
+                onChange={(e) => setPreferredModelMode(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 focus:outline-none rounded-xl px-3.5 py-2.5 text-xs font-mono text-white"
+              >
+                <option value="auto">
+                  🔄 Automático: Rotación Alta Cuota Gratis (Flash-Lite 500+/día + 3.8 Flash + Gemma 3 14,400/día)
+                </option>
+                {availableModels.map(m => (
+                  <option key={m} value={m}>
+                    {m.includes('flash-lite')
+                      ? `⚡ ${m} (Alta Cuota Gratis ~500-1,500/día)`
+                      : m.startsWith('gemma-3')
+                      ? `🚀 ${m} (Cuota Gratis Masiva ~14,400/día)`
+                      : `✨ ${m} (Cuota Estándar ~20/día)`}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                💡 Si <code className="text-amber-300">gemini-3.8-flash</code> llega al límite de 20 peticiones diarias, el modo automático salta al instante a <code className="text-emerald-300">flash-lite</code> o <code className="text-cyan-300">gemma-3-27b-it</code> que tienen cientos o miles de peticiones gratis al día.
+              </p>
             </div>
 
             {/* Opciones de Almacenamiento */}
