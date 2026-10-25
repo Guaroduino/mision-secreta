@@ -89,14 +89,8 @@ const AI_THEMES = [
   }
 ];
 
-// Lista de modelos candidatos en orden de prioridad con fallback automático
-const CANDIDATE_MODELS = [
-  'gemini-3.8-flash',
-  'gemini-3.0-flash',
-  'gemini-3-flash-preview',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash'
-];
+// Modelo fijo: usar siempre gemini-3.8-flash
+const GEMINI_MODEL = 'gemini-3.8-flash';
 
 // Mezclar arreglo aleatoriamente
 function shuffleArray(arr) {
@@ -403,13 +397,15 @@ function buildProceduralCleanupMission(objectsToClean = []) {
 const CLEANUP_STEPS_THRESHOLD = 9;
 
 export default function App() {
-  // Manejo de Gemini API Key y Modelo
+  // Manejo de Gemini API Key (Modelo fijo: gemini-3.8-flash)
   const [apiKey, setApiKey] = useState(() => {
-    return (typeof window !== 'undefined' && localStorage.getItem('gemini_api_key')) || "";
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('gemini_model');
+      return localStorage.getItem('gemini_api_key') || "";
+    }
+    return "";
   });
-  const [activeModel, setActiveModel] = useState(() => {
-    return (typeof window !== 'undefined' && localStorage.getItem('gemini_model')) || "gemini-3.8-flash";
-  });
+  const activeModel = GEMINI_MODEL;
   const [inputKey, setInputKey] = useState("");
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [keyTesting, setKeyTesting] = useState(false);
@@ -467,81 +463,24 @@ export default function App() {
     }
   }, [showKeyModal, apiKey]);
 
-  // Función inteligente para llamar a Gemini con auto-detección de modelo
-  const callGeminiWithFallback = async (key, payload, preferredModel = activeModel) => {
+  // Llamada directa y exclusiva a gemini-3.8-flash
+  const callGeminiWithFallback = async (key, payload) => {
     const cleanKey = key.trim();
-    const modelsToTry = [
-      preferredModel,
-      ...CANDIDATE_MODELS.filter(m => m !== preferredModel)
-    ];
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${cleanKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
 
-    let lastError = null;
-
-    for (let i = 0; i < modelsToTry.length; i++) {
-      const modelName = modelsToTry[i];
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanKey}`;
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (modelName !== activeModel) {
-            setActiveModel(modelName);
-            localStorage.setItem('gemini_model', modelName);
-          }
-          return { data, usedModel: modelName };
-        }
-
-        const errorData = await res.json().catch(() => ({}));
-        const errMsg = errorData.error?.message || `Error HTTP ${res.status}`;
-        lastError = new Error(errMsg);
-
-        const matchSuggested = errMsg.match(/models\/(gemini-[a-zA-Z0-9.-]+)/);
-        if (matchSuggested && matchSuggested[1] && !modelsToTry.includes(matchSuggested[1])) {
-          modelsToTry.splice(i + 1, 0, matchSuggested[1]);
-        }
-
-        if (errMsg.toLowerCase().includes('api key not valid') || res.status === 403) {
-          break;
-        }
-      } catch (networkErr) {
-        lastError = networkErr;
-      }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errMsg = errorData.error?.message || `Error HTTP ${res.status}`;
+      throw new Error(errMsg);
     }
 
-    try {
-      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`);
-      if (listRes.ok) {
-        const listData = await listRes.json();
-        const availableFlash = (listData.models || [])
-          .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
-          .map(m => m.name.replace('models/', ''))
-          .find(name => name.includes('flash') && !name.includes('2.5') && !name.includes('1.5'));
-
-        if (availableFlash) {
-          const retryUrl = `https://generativelanguage.googleapis.com/v1beta/models/${availableFlash}:generateContent?key=${cleanKey}`;
-          const retryRes = await fetch(retryUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          if (retryRes.ok) {
-            const data = await retryRes.json();
-            setActiveModel(availableFlash);
-            localStorage.setItem('gemini_model', availableFlash);
-            return { data, usedModel: availableFlash };
-          }
-        }
-      }
-    } catch (_) {
-      // Ignorar si falla el listado
-    }
-
-    throw lastError || new Error("No se pudo conectar con Gemini.");
+    const data = await res.json();
+    return { data, usedModel: GEMINI_MODEL };
   };
 
   // Rangos de Espía
@@ -1993,20 +1932,10 @@ ${stepsTemplateExample}
               </div>
             </div>
 
-            {/* Selector de Modelo con Auto-Fallback */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">
-                Modelo Preferido (con detección automática):
-              </label>
-              <select
-                value={activeModel}
-                onChange={(e) => setActiveModel(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 focus:outline-none rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-200"
-              >
-                {CANDIDATE_MODELS.map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
+            {/* Modelo Activo Fijo */}
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs font-mono">
+              <span className="text-slate-400">Modelo IA configurado:</span>
+              <span className="text-emerald-400 font-bold">{GEMINI_MODEL}</span>
             </div>
 
             {/* Opciones de Almacenamiento */}
