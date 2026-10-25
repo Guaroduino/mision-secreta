@@ -395,6 +395,8 @@ function buildProceduralCleanupMission(objectsToClean = []) {
 
 // Meta de pasos acumulados para disparar automáticamente la Misión de Recoger Objetos
 const CLEANUP_STEPS_THRESHOLD = 9;
+// Tiempo mínimo obligatorio de lectura y memorización antes de pasar al Test de Memoria (80 segundos)
+const MIN_STUDY_SECONDS = 80;
 
 export default function App() {
   // Manejo de Gemini API Key (Modelo fijo: gemini-3.8-flash)
@@ -441,6 +443,7 @@ export default function App() {
 
   const [timerSeconds, setTimerSeconds] = useState(90);
   const [isTimerActive, setIsTimerActive] = useState(false);
+  const [studySecondsLeft, setStudySecondsLeft] = useState(MIN_STUDY_SECONDS);
   const [checkedSteps, setCheckedSteps] = useState([]);
 
   // Cámara e IA Gemini
@@ -613,7 +616,22 @@ export default function App() {
     }
   }, [phase]);
 
-  // Temporizador de cuenta regresiva
+  // Temporizador de lectura mínima obligatoria (80s) en Fase 1 ('listen')
+  useEffect(() => {
+    if (phase !== 'listen' || isGeneratingMission || studySecondsLeft <= 0) return;
+    const interval = setInterval(() => {
+      setStudySecondsLeft(prev => {
+        if (prev <= 1) {
+          SpyAudio.playRadar();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [phase, isGeneratingMission, studySecondsLeft]);
+
+  // Temporizador de cuenta regresiva de ejecución (Fase 3)
   useEffect(() => {
     let interval = null;
     if (isTimerActive && timerSeconds > 0) {
@@ -1082,6 +1100,7 @@ ${stepsTemplateExample}
 
   const resetMissionFlow = (stepsCount = difficultySteps, repsCount = actionReps) => {
     setPhase('listen');
+    setStudySecondsLeft(MIN_STUDY_SECONDS);
     setQuizStepIndex(0);
     setWrongOptionSelected(null);
     setQuizFeedbackMsg("");
@@ -1579,30 +1598,71 @@ ${stepsTemplateExample}
                 })}
               </div>
 
-              {/* ================= FASE 1: ESCUCHAR ================= */}
+              {/* ================= FASE 1: ESCUCHAR (CON TIEMPO MÍNIMO DE 80s PARA MEMORIZAR) ================= */}
               {phase === 'listen' && (
-                <div className="p-5 rounded-2xl bg-cyan-950/30 border border-cyan-800/40 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="text-left">
-                    <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
-                      <Eye className="w-4 h-4" />
-                      Paso 1: Lee o escucha con mucha atención los {currentMission.steps.length} pasos
-                    </h4>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Fíjate bien en los números, colores y detalles. En el siguiente paso se ocultarán y tendrás que elegir la opción correcta entre 4 parecidas.
-                    </p>
+                <div className="p-5 rounded-2xl bg-cyan-950/30 border border-cyan-800/40 space-y-4">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="text-left space-y-1">
+                      <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
+                        <Eye className="w-4 h-4" />
+                        <span>Paso 1: Lee y memoriza con calma los {currentMission.steps.length} pasos</span>
+                      </h4>
+                      <p className="text-xs text-slate-400">
+                        {studySecondsLeft > 0
+                          ? `Lee varias veces los números, colores y detalles. El test de memoria se desbloqueará en ${studySecondsLeft} segundos.`
+                          : '¡Tiempo de estudio completado! Ya puedes ocultar las instrucciones y hacer el test de memoria.'}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1.5 w-full sm:w-auto shrink-0">
+                      <button
+                        disabled={studySecondsLeft > 0}
+                        onClick={() => {
+                          SpyAudio.playSuccess();
+                          setPhase('repeat');
+                          speakText(`¡Hora del reto de memoria! Selecciona cuál era el Paso 1 entre las cuatro opciones.`);
+                        }}
+                        className={`w-full sm:w-auto px-6 py-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all ${
+                          studySecondsLeft > 0
+                            ? 'bg-slate-800 border border-slate-700 text-slate-400 cursor-not-allowed'
+                            : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/20 animate-bounce'
+                        }`}
+                      >
+                        {studySecondsLeft > 0 ? (
+                          <>
+                            <Lock className="w-4 h-4 text-amber-400" />
+                            <span>Memorizando... ({studySecondsLeft}s)</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>¡Listo! Ocultar y Hacer Test</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+
+                      {studySecondsLeft > 0 && (
+                        <button
+                          onClick={() => setStudySecondsLeft(0)}
+                          className="text-[10px] text-slate-500 hover:text-cyan-400 underline font-mono"
+                        >
+                          Saltar espera (Padres)
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      SpyAudio.playSuccess();
-                      setPhase('repeat');
-                      speakText(`¡Hora del reto de memoria! Selecciona cuál era el Paso 1 entre las cuatro opciones.`);
-                    }}
-                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 shrink-0"
-                  >
-                    <span>¡Listo! Ocultar y Hacer Test</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
+                  {/* Barra de progreso visual de los 80 segundos de lectura */}
+                  {studySecondsLeft > 0 && (
+                    <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                      <div
+                        className="bg-gradient-to-r from-cyan-500 to-amber-400 h-full transition-all duration-1000"
+                        style={{
+                          width: `${Math.min(100, Math.round(((MIN_STUDY_SECONDS - studySecondsLeft) / MIN_STUDY_SECONDS) * 100))}%`
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
